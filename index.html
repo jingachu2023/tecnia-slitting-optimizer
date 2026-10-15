@@ -480,7 +480,12 @@ var SlittingCalc = (function () {
     var ctx = { MW: MW, ML: ML, step: +cfg.widthStep > 0 ? +cfg.widthStep : 5,
                 maxSeg: Math.max(1, Math.floor(+cfg.maxSegments || 6)) };
 
-    var lines = (rawLines || []).map(function (l, i) {
+    var lines = (rawLines || []).filter(function (l) {
+      // 全空白行不参与计算、不显示
+      return !((!l.order || !String(l.order).trim()) && (!l.model || !String(l.model).trim()) &&
+               (toNum(l.width) !== toNum(l.width)) && (toNum(l.length) !== toNum(l.length)) &&
+               (toNum(l.qty) !== toNum(l.qty)));
+    }).map(function (l, i) {
       var r = analyzeLine(l, cfg, ctx); r.rowNo = i + 1; return r;
     });
 
@@ -551,6 +556,10 @@ var SlittingCalc = (function () {
                    segs: [{ w: g.prodW, c: g.strips, n: g.segments }] };
         });
       }
+      // 排刀方案按边料升序（零边料/精确整除优先），边料相同按使用次数多的在前
+      plan.patterns.sort(function (a, b) {
+        return (a.edge - b.edge) || (b.times - a.times);
+      });
       models.push(plan);
     });
 
@@ -597,7 +606,8 @@ var I18N = {
     'in.width': '需求宽度 (mm)', 'in.length': '需求长度 (M)', 'in.qty': '数量 (卷)',
     'in.phOrder': '订单号', 'in.phModel': '产品型号', 'in.phWidth': 'mm', 'in.phLength': 'M', 'in.phQty': '卷',
     'btn.addRow': '+ 添加一行', 'btn.sample': '载入示例', 'btn.clear': '清空',
-    'btn.calc': '生成最优分切方案', 'btn.recalc': '重新计算 / 返回输入',
+    'btn.calc': '生成最优分切方案', 'btn.recalc': '重新计算',
+    'btn.reenter': '重新输入',
     'btn.exportXls': '导出 Excel', 'btn.exportCsv': '导出 CSV', 'btn.print': '打印 / 存 PDF',
     'in.pasteHint': '提示：可直接从 Excel 复制多行（列顺序：订单号 / 产品型号 / 宽 / 长 / 卷数），在表格任意输入框按 Ctrl + V 批量粘贴；留空的行不参与计算。',
     'empty.title': '请填写订单规格与数量，然后点击「生成最优分切方案」',
@@ -663,7 +673,8 @@ var I18N = {
     'in.width': 'Width (mm)', 'in.length': 'Length (M)', 'in.qty': 'Rolls',
     'in.phOrder': 'Order No.', 'in.phModel': 'Product', 'in.phWidth': 'mm', 'in.phLength': 'M', 'in.phQty': 'rolls',
     'btn.addRow': '+ Add row', 'btn.sample': 'Load sample', 'btn.clear': 'Clear',
-    'btn.calc': 'Generate Optimal Plan', 'btn.recalc': 'Recalculate / Back to input',
+    'btn.calc': 'Generate Optimal Plan', 'btn.recalc': 'Recalculate',
+    'btn.reenter': 'Re-enter Order',
     'btn.exportXls': 'Export Excel', 'btn.exportCsv': 'Export CSV', 'btn.print': 'Print / PDF',
     'in.pasteHint': 'Tip: copy multiple rows from Excel (columns: Order No. / Product / Width / Length / Rolls), then press Ctrl + V in any cell to paste in bulk. Blank rows are ignored.',
     'empty.title': 'Enter the order specs and quantity, then click "Generate Optimal Plan"',
@@ -822,7 +833,6 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
     var res = C.calculate(readRowValues(), state.cfg);
     state.last = res; state.stale = false;
     renderResult(res);
-    el('btnCalcLabel').textContent = t('btn.recalc');
     if (scroll && el('resultHost').scrollIntoView) {
       el('resultHost').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -844,7 +854,6 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
     if (bar) { bar.textContent = t('stale'); bar.style.display = ''; }
     var body = el('resultBody');
     if (body) body.classList.add('dimmed');
-    el('btnCalcLabel').textContent = t('btn.recalc');
   }
 
   function renderResult(res) {
@@ -861,6 +870,9 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
       '<div id="resultBody">' +
         renderKPI(res) + renderNotices(res) + renderDetail(res) +
         renderPlans(res) + renderSummaryTable(res) + renderLoss(res) +
+      '</div>' +
+      '<div class="cta-bar no-print" style="border-top:none;padding-top:4px">' +
+        '<button type="button" class="btn-cta" id="btnReenter"><span>↺</span><span>' + esc(t('btn.reenter')) + '</span></button>' +
       '</div>';
   }
 
@@ -1091,13 +1103,7 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
     });
     el('btnSample').addEventListener('click', function () { state.rows = SAMPLE.map(newRow); renderInputs(); doCalc(false); });
     el('btnClear').addEventListener('click', function () { state.rows = [newRow(), newRow(), newRow()]; renderInputs(); doCalc(false); });
-    el('btnCalc').addEventListener('click', function () {
-      if (state.last && !state.stale) {
-        resetToInitial();
-      } else {
-        doCalc(true);
-      }
-    });
+    el('btnCalc').addEventListener('click', function () { doCalc(true); });
 
     document.querySelector('.lang').addEventListener('click', function (e) {
       var b = e.target.closest('[data-lang]');
@@ -1105,7 +1111,6 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
       lang = b.getAttribute('data-lang');
       applyI18n(); renderInputs();
       if (state.last) renderResult(state.last);
-      el('btnCalcLabel').textContent = state.last ? t('btn.recalc') : t('btn.calc');
       if (state.stale) markStale();
     });
 
@@ -1129,6 +1134,7 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
       if (e.target.id === 'btnExportXls') exportExcel(state.last);
       if (e.target.id === 'btnExportCsv') exportCsv(state.last);
       if (e.target.id === 'btnPrint') window.print();
+      if (e.target.closest('#btnReenter')) resetToInitial();
     });
   }
 
