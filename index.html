@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tecnia Online Slitting Optimizer</title>
+<meta name="description" content="Tecnia Online Slitting Optimizer — 在线分切优化器：输入订单规格与数量，自动生成最优分切方案与母卷用量。">
+<style>
+  :root{
+    --bg:#eef2f7; --card:#ffffff; --line:#e2e8f0; --line2:#eef2f7;
+    --text:#1e293b; --muted:#64748b; --faint:#94a3b8;
+    --primary:#1668dc; --primary-d:#0f4ea8; --primary-l:#eaf2ff;
+    --ok:#0f9d58; --okl:#e8f6ee; --warn:#d97706; --warnl:#fdf4e3;
+    --err:#dc2626; --errl:#fdeceb;
+    --radius:12px; --shadow:0 1px 2px rgba(15,23,42,.06),0 6px 20px -8px rgba(15,23,42,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1280px;margin:0 auto;padding:22px 18px 60px}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    background:linear-gradient(120deg,#0f4ea8 0%,#1668dc 45%,#0ea5b7 100%);
+    border-radius:14px;padding:20px 24px;color:#fff;margin-bottom:18px;
+    display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;
+    box-shadow:0 10px 26px -12px rgba(15,78,168,.7);
+  }
+  .brand{display:flex;align-items:center;gap:15px;min-width:0}
+  .logo{
+    height:46px;padding:0 18px;border-radius:12px;flex:none;
+    background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+    display:flex;align-items:center;justify-content:center;
+    font-size:22px;font-weight:800;letter-spacing:3px;
+  }
+  .brand h1{margin:0;font-size:23px;line-height:1.25;font-weight:700;letter-spacing:.2px}
+  .brand p{margin:4px 0 0;font-size:12.5px;color:rgba(255,255,255,.82)}
+  .topright{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .mother-badge{
+    background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:10px;
+    padding:8px 14px;font-size:12.5px;color:rgba(255,255,255,.85);white-space:nowrap;
+  }
+  .mother-badge strong{color:#fff;font-size:14px;letter-spacing:.4px;display:block;margin-top:1px}
+  .lang{display:flex;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:9px;overflow:hidden}
+  .lang button{
+    font:inherit;font-size:12.5px;border:none;background:transparent;color:rgba(255,255,255,.8);
+    padding:7px 13px;cursor:pointer;transition:.15s;
+  }
+  .lang button.on{background:#fff;color:var(--primary-d);font-weight:600}
+
+  /* ---------- card ---------- */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+  .card-head h2{margin:0;font-size:15px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .card-head h2 .num{
+    width:22px;height:22px;border-radius:7px;background:var(--primary-l);color:var(--primary);
+    display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none;
+  }
+  .card-head .sub{color:var(--muted);font-size:12.5px;font-weight:400}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    font:inherit;font-size:13px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--text);
+    padding:7px 13px;cursor:pointer;transition:.15s;white-space:nowrap;
+  }
+  .btn:hover{border-color:#c9d4e2;background:#f8fafc}
+  .btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn-primary:hover{background:var(--primary-d);border-color:var(--primary-d)}
+  .btn-ghost{background:#fff;color:var(--muted)}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+  .btn-cta{
+    display:inline-flex;align-items:center;gap:10px;font-family:inherit;
+    background:var(--primary);border:1px solid var(--primary);color:#fff;
+    font-size:15.5px;font-weight:600;padding:13px 36px;border-radius:11px;
+    box-shadow:0 8px 20px -8px rgba(22,104,220,.75);cursor:pointer;transition:.15s;
+  }
+  .btn-cta:hover{background:var(--primary-d);border-color:var(--primary-d);transform:translateY(-1px)}
+  .btn-cta:active{transform:none}
+  .cta-bar{display:flex;justify-content:center;align-items:center;gap:14px;padding:20px;background:#fbfcfe;border-top:1px solid var(--line2);flex-wrap:wrap}
+  .icon-btn{border:none;background:transparent;color:var(--faint);cursor:pointer;font-size:16px;line-height:1;padding:5px 8px;border-radius:7px}
+  .icon-btn:hover{background:var(--errl);color:var(--err)}
+
+  /* ---------- input table ---------- */
+  .table-wrap{overflow-x:auto}
+  table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.grid th{
+    background:#f7f9fc;color:var(--muted);font-weight:600;text-align:left;font-size:12.5px;
+    padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  table.grid td{padding:5px 10px;border-bottom:1px solid var(--line2);vertical-align:middle}
+  table.grid tbody tr:hover td{background:#fbfcfe}
+  table.grid td.c-num,table.grid th.c-num{text-align:right}
+  table.grid td.c-idx{color:var(--faint);font-size:12px;text-align:center;width:38px}
+  table.grid td.c-op{width:44px;text-align:center}
+  table.grid input{
+    font:inherit;font-size:13.5px;border:1px solid transparent;background:transparent;border-radius:7px;
+    padding:6px 8px;width:100%;color:var(--text);transition:.15s;
+  }
+  table.grid input:hover{border-color:var(--line)}
+  table.grid input:focus{outline:none;border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px rgba(22,104,220,.12)}
+  table.grid input.num{text-align:right}
+  table.grid input::-webkit-outer-spin-button,table.grid input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+  .hint{margin:10px 18px 14px;color:var(--muted);font-size:12.5px;line-height:1.7}
+
+  /* ---------- advanced ---------- */
+  details.adv{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+  details.adv > summary{
+    cursor:pointer;padding:14px 18px;font-size:14px;font-weight:600;list-style:none;
+    display:flex;align-items:center;justify-content:space-between;color:var(--text);
+  }
+  details.adv > summary::-webkit-details-marker{display:none}
+  details.adv > summary .caret{transition:.2s;color:var(--faint);font-size:12px}
+  details.adv[open] > summary{border-bottom:1px solid var(--line2)}
+  details.adv[open] > summary .caret{transform:rotate(180deg)}
+  .cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px 20px;padding:16px 18px}
+  .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px}
+  .field input[type=number]{
+    font:inherit;font-size:13.5px;width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:9px;
+    background:#fff;color:var(--text);
+  }
+  .field input[type=number]:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(22,104,220,.12)}
+  .switch{display:flex;align-items:flex-start;gap:9px;font-size:13px;cursor:pointer;padding-top:2px}
+  .switch input{margin-top:2px;width:15px;height:15px;accent-color:var(--primary);flex:none}
+  .switch b{font-weight:600;display:block}
+  .switch em{font-style:normal;color:var(--muted);font-size:12px;display:block;margin-top:1px}
+
+  /* ---------- KPI ---------- */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;margin-bottom:16px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:13px 15px;box-shadow:var(--shadow)}
+  .kpi .k{font-size:12.5px;color:var(--muted)}
+  .kpi .v{font-size:22px;font-weight:700;letter-spacing:-.3px;margin-top:3px;font-variant-numeric:tabular-nums}
+  .kpi .u{font-size:12.5px;font-weight:500;color:var(--muted);margin-left:2px}
+  .kpi.hi{background:linear-gradient(160deg,#f4f9ff,#ffffff);border-color:#cfe1fa}
+  .kpi.hi .v{color:var(--primary)}
+  .kpi.good .v{color:var(--ok)}
+  .kpi.warn .v{color:var(--warn)}
+
+  /* ---------- result tables ---------- */
+  table.res{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+  table.res th{
+    background:#f7f9fc;color:var(--muted);font-weight:600;font-size:12.5px;text-align:left;
+    padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  table.res td{padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
+  table.res td.n,table.res th.n{text-align:right}
+  table.res td.mono{font-variant-numeric:tabular-nums;font-weight:600;color:var(--primary)}
+  table.res tr.model-head td{background:#f8fafc;font-weight:600;border-bottom:1px solid var(--line)}
+  table.res tbody tr:hover td{background:#fbfcfe}
+  .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;line-height:1.65;white-space:nowrap;font-weight:600}
+  .tag.ok{background:var(--okl);color:var(--ok)}
+  .tag.info{background:var(--primary-l);color:var(--primary)}
+  .tag.warn{background:var(--warnl);color:var(--warn)}
+  .tag.gray{background:#f1f5f9;color:var(--muted)}
+
+  /* ---------- slit bar ---------- */
+  .slitbar{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--line);background:#f8fafc;min-width:250px}
+  .slit{display:flex;align-items:center;justify-content:center;color:#fff;font-size:10.5px;font-weight:600;
+        overflow:hidden;white-space:nowrap;border-right:1px solid rgba(255,255,255,.55)}
+  .slit:last-child{border-right:none}
+  .slit.edge{background:repeating-linear-gradient(45deg,#e8edf4,#e8edf4 5px,#dde5ee 5px,#dde5ee 10px);color:#8494a8}
+
+  .empty{padding:52px 20px;text-align:center;color:var(--faint)}
+  .empty .big{font-size:38px;margin-bottom:10px;opacity:.45}
+  .empty .t{font-size:14.5px;color:var(--muted)}
+
+  .note-box{border-radius:10px;padding:11px 14px;font-size:13px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start}
+  .note-box.warn{background:var(--warnl);color:#8a5308;border:1px solid #f5dfae}
+  .note-box.err{background:var(--errl);color:#98201d;border:1px solid #f6cdcb}
+  .note-box.stale{background:#eef4ff;color:#1b4a8f;border:1px solid #cfe1fa;justify-content:center;align-items:center;font-weight:600}
+  .note-box ul{margin:0;padding-left:18px}
+  .note-box li{margin:2px 0}
+
+  .section-title{font-size:14px;font-weight:700;margin:24px 0 10px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .section-title .bar{width:3px;height:15px;border-radius:2px;background:var(--primary)}
+  .section-title small{font-weight:400;color:var(--muted);font-size:12px}
+
+  .result-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:26px 0 12px}
+  .result-head h2{margin:0;font-size:17px;display:flex;align-items:center;gap:9px}
+  .result-head h2 .num{width:24px;height:24px;border-radius:7px;background:var(--primary);color:#fff;
+    display:inline-flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700}
+  .dimmed{opacity:.5;filter:grayscale(.35);transition:.2s}
+
+  footer.app{margin-top:26px;color:var(--faint);font-size:12px;text-align:center;line-height:1.9}
+
+  @media print{
+    body{background:#fff}
+    .no-print{display:none !important}
+    .card,.kpi,.topbar,details.adv{box-shadow:none;break-inside:avoid}
+    .topbar{background:#fff;color:#111;border:1px solid #cbd5e1}
+    .topbar .mother-badge{color:#333;border-color:#cbd5e1;background:#f8fafc}
+    .topbar .mother-badge strong{color:#111}
+    .brand p{color:#555}
+    .wrap{max-width:none;padding:0}
+  }
+  @media (max-width:720px){
+    .brand h1{font-size:17px}
+    .kpi .v{font-size:19px}
+    .topbar{padding:16px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">TECNIA</div>
+      <div>
+        <h1>Tecnia Online Slitting Optimizer</h1>
+        <p data-i18n="app.tagline"></p>
+      </div>
+    </div>
+    <div class="topright">
+      <div class="lang no-print">
+        <button type="button" data-lang="zh">中文</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+      <div class="mother-badge">
+        <span data-i18n="app.motherRoll"></span>
+        <strong id="motherBadge">1530 mm × 6000 M</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- ① 客户输入 -->
+  <section class="card no-print">
+    <div class="card-head">
+      <h2><span class="num">1</span><span data-i18n="step1.title"></span>
+        <span class="sub" data-i18n="step1.sub"></span></h2>
+      <div class="btn-row">
+        <button type="button" class="btn" id="btnAddRow" data-i18n="btn.addRow"></button>
+        <button type="button" class="btn" id="btnSample" data-i18n="btn.sample"></button>
+        <button type="button" class="btn btn-ghost" id="btnClear" data-i18n="btn.clear"></button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="grid" id="inputTable">
+        <thead>
+          <tr>
+            <th class="c-idx">#</th>
+            <th style="width:15%" data-i18n="in.order"></th>
+            <th style="width:27%" data-i18n="in.model"></th>
+            <th class="c-num" style="width:14%" data-i18n="in.width"></th>
+            <th class="c-num" style="width:14%" data-i18n="in.length"></th>
+            <th class="c-num" style="width:11%" data-i18n="in.qty"></th>
+            <th class="c-op"></th>
+          </tr>
+        </thead>
+        <tbody id="inputBody"></tbody>
+      </table>
+    </div>
+    <p class="hint" data-i18n="in.pasteHint"></p>
+    <div class="cta-bar">
+      <button type="button" class="btn-cta" id="btnCalc"><span id="btnCalcLabel" data-i18n="btn.calc"></span><span aria-hidden="true">→</span></button>
+    </div>
+  </section>
+
+  <!-- ② 优化方案 -->
+  <div id="resultHost"></div>
+
+  <!-- 高级设置 -->
+  <details class="adv no-print" id="advBox">
+    <summary><span data-i18n="adv.title"></span><span class="caret">▾</span></summary>
+    <div class="cfg-grid">
+      <div class="field">
+        <label data-i18n="adv.mw"></label>
+        <input type="number" id="cfgMW" value="1530" min="1" step="1">
+      </div>
+      <div class="field">
+        <label data-i18n="adv.ml"></label>
+        <input type="number" id="cfgML" value="6000" min="1" step="1">
+      </div>
+      <div class="field">
+        <label data-i18n="adv.step"></label>
+        <input type="number" id="cfgStep" value="5" min="0.1" step="0.5">
+      </div>
+      <div class="field">
+        <label data-i18n="adv.maxSeg"></label>
+        <input type="number" id="cfgMaxSeg" value="6" min="1" step="1">
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="cfgNest" checked>
+        <span><b data-i18n="adv.nest"></b><em data-i18n="adv.nestDesc"></em></span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" id="cfgAutoW">
+        <span><b data-i18n="adv.autoW"></b><em data-i18n="adv.autoWDesc"></em></span>
+      </label>
+      <div class="field">
+        <label data-i18n="adv.autoTol"></label>
+        <input type="number" id="cfgAutoTol" value="20" min="0" step="1">
+      </div>
+    </div>
+  </details>
+
+  <footer class="app">
+    <span>Tecnia Online Slitting Optimizer</span> · <span data-i18n="footer.rules"></span>
+  </footer>
+</div>
+
+<script>
+/* =========================================================================
+ * 分切计算引擎 — 母卷（Mill Roll）：宽 × 长（默认 1530mm × 6000M）
+ * 提示信息以 {c:code, p:params} 结构返回，由界面层按语言渲染。
+ * ========================================================================= */
+var SlittingCalc = (function () {
+  'use strict';
+  var EPS = 1e-9;
+
+  var DEFAULTS = {
+    motherWidth: 1530, motherLength: 6000, widthStep: 5, maxSegments: 6,
+    autoWidth: false, autoWidthTol: 20, nest: true
+  };
+
+  function R(x, d) { d = d === undefined ? 6 : d; var p = Math.pow(10, d); return Math.round(x * p) / p; }
+  function toNum(v) {
+    if (v === null || v === undefined || v === '') return NaN;
+    var n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[,\s]/g, ''));
+    return isFinite(n) ? n : NaN;
+  }
+  function roundUpToStep(v, step) {
+    if (!(step > 0)) return R(v, 4);
+    var k = Math.ceil(R(v, 6) / step - 1e-9);
+    var out = R(k * step, 6);
+    if (out < v - EPS) out = R(out + step, 6);
+    return out;
+  }
+  function pickBestWidth(baseW, tol, step, MW) {
+    var best = baseW, bestUtil = -1, n = Math.max(0, Math.round(tol / step));
+    for (var i = 0; i <= n; i++) {
+      var c = R(baseW + i * step, 6);
+      if (c > MW + EPS) break;
+      var k = Math.floor(MW / c + EPS);
+      if (k < 1) continue;
+      var u = (k * c) / MW;
+      if (u > bestUtil + 1e-12) { bestUtil = u; best = c; }
+    }
+    return best;
+  }
+
+  function analyzeLine(line, cfg, ctx) {
+    var MW = ctx.MW, ML = ctx.ML, step = ctx.step, maxSeg = ctx.maxSeg;
+    var res = {
+      order: (line.order == null) ? '' : String(line.order).trim(),
+      model: (line.model == null) ? '' : String(line.model).trim(),
+      reqW: toNum(line.width), reqL: toNum(line.length), reqQ: toNum(line.qty),
+      ok: true, errors: [], notes: []
+    };
+    if (!(res.reqW > 0)) res.errors.push({ c: 'err.badWidth' });
+    if (!(res.reqL > 0)) res.errors.push({ c: 'err.badLength' });
+    if (!(res.reqQ > 0)) res.errors.push({ c: 'err.badQty' });
+    if (res.errors.length) { res.ok = false; return res; }
+
+    res.qty = Math.ceil(res.reqQ - EPS);
+    if (res.qty !== res.reqQ) res.notes.push({ c: 'note.qtyRound', p: { q: res.qty } });
+    res.modelKey = res.model || '';
+
+    var prodW = roundUpToStep(res.reqW, step);
+    if (cfg.autoWidth) prodW = pickBestWidth(prodW, cfg.autoWidthTol, step, MW);
+    if (prodW > MW + EPS) {
+      res.ok = false;
+      res.errors.push({ c: 'err.tooWide', p: { w: R(prodW, 2), mw: MW } });
+      return res;
+    }
+    if (res.reqL > ML + EPS) {
+      res.ok = false;
+      res.errors.push({ c: 'err.tooLong', p: { l: R(res.reqL, 2), ml: ML } });
+      return res;
+    }
+    var segs = Math.floor(R(ML / res.reqL, 9) + EPS);
+    if (segs < 1) segs = 1;
+    if (segs > maxSeg) {
+      segs = maxSeg;
+      res.notes.push({ c: 'note.segLimit', p: { max: maxSeg, l: R(ML / segs, 2) } });
+    }
+    var prodL = R(ML / segs, 6);
+
+    var strips = Math.floor(MW / prodW + EPS);
+    if (strips < 1) { res.ok = false; res.errors.push({ c: 'err.noSlit' }); return res; }
+
+    res.prodW = R(prodW, 4); res.prodL = prodL; res.segments = segs; res.strips = strips;
+    res.perMotherRoll = strips * segs;
+    res.edge = R(MW - strips * prodW, 4);
+
+    if (res.prodW > res.reqW + EPS) res.notes.push({ c: 'note.widthUp', p: { from: R(res.reqW, 2), to: R(res.prodW, 2) } });
+    if (Math.abs(res.prodL - res.reqL) > 1e-6) res.notes.push({ c: 'note.lenUp', p: { from: R(res.reqL, 2), to: R(res.prodL, 2) } });
+
+    res.groupKey = res.modelKey + '|' + res.prodW + '|' + res.prodL;
+    return res;
+  }
+
+  /* ---------- 同型号组合套切 ---------- */
+  function bestPattern(its, MWu, SCALE, memo, choice, N) {
+    function solve(i, rem) {
+      if (i === N) return 0;
+      var key = i * (MWu + 1) + rem;
+      if (memo[key] >= 0) return memo[key];
+      var w = Math.max(1, Math.round(its[i].Wp * SCALE));
+      var mx = Math.min(its[i]._cap, Math.floor(rem / w));
+      var best = 0, bestC = 0;
+      for (var c = mx; c >= 0; c--) {
+        var v = c * w + solve(i + 1, rem - c * w);
+        if (v > best) { best = v; bestC = c; }
+      }
+      memo[key] = best; choice[key] = bestC;
+      return best;
+    }
+    solve(0, MWu);
+    var counts = new Array(N).fill(0), rem = MWu;
+    for (var i = 0; i < N; i++) {
+      var key = i * (MWu + 1) + rem;
+      var c = choice[key] || 0;
+      counts[i] = c;
+      rem -= c * Math.max(1, Math.round(its[i].Wp * SCALE));
+    }
+    return counts;
+  }
+
+  function nestSolve(items, MW) {
+    var N = items.length;
+    if (N < 2) return null;
+    var SCALE = 10, MWu = Math.round(MW * SCALE);
+    var its = items.map(function (it) {
+      return { key: it.key, groupKey: it.groupKey, Wp: it.Wp, n: it.n, need: it.need, remain: it.need, _cap: 0 };
+    });
+    var usage = [], guard = 0;
+
+    while (its.some(function (it) { return it.remain > 0; }) && guard++ < 4000) {
+      its.forEach(function (it) {
+        var byWidth = Math.floor(MW / it.Wp + EPS);
+        var byNeed = it.remain > 0 ? Math.max(1, Math.ceil(it.remain / it.n)) : 0;
+        it._cap = Math.max(0, Math.min(byWidth, byNeed));
+      });
+      var memo = new Float64Array((N + 1) * (MWu + 1)).fill(-1);
+      var choice = new Int32Array((N + 1) * (MWu + 1));
+      var counts = bestPattern(its, MWu, SCALE, memo, choice, N);
+      var used = 0;
+      for (var z = 0; z < N; z++) used += counts[z];
+      if (used <= 0) break;
+
+      var times = Infinity;
+      for (var i = 0; i < N; i++) {
+        if (counts[i] > 0) times = Math.min(times, Math.floor(its[i].remain / (counts[i] * its[i].n)));
+      }
+      if (!isFinite(times) || times < 1) times = 1;
+      usage.push({ counts: counts.slice(), times: times });
+      for (i = 0; i < N; i++) its[i].remain -= counts[i] * its[i].n * times;
+    }
+
+    var merged = [];
+    usage.forEach(function (u) {
+      var k = u.counts.join(',');
+      var f = null;
+      for (var i = 0; i < merged.length; i++) if (merged[i].k === k) { f = merged[i]; break; }
+      if (f) f.times += u.times; else merged.push({ k: k, counts: u.counts.slice(), times: u.times });
+    });
+
+    var produced = its.map(function () { return 0; });
+    var rolls = 0;
+    merged.forEach(function (u) {
+      rolls += u.times;
+      for (var i = 0; i < N; i++) produced[i] += u.counts[i] * its[i].n * u.times;
+    });
+
+    return {
+      items: its.map(function (it) { return { key: it.key, groupKey: it.groupKey, Wp: it.Wp, n: it.n, need: it.need }; }),
+      patterns: merged, produced: produced, motherRolls: rolls
+    };
+  }
+
+  /* ---------- 主计算 ---------- */
+  function calculate(rawLines, userCfg) {
+    var cfg = Object.assign({}, DEFAULTS, userCfg || {});
+    var MW = +cfg.motherWidth, ML = +cfg.motherLength;
+    var ctx = { MW: MW, ML: ML, step: +cfg.widthStep > 0 ? +cfg.widthStep : 5,
+                maxSeg: Math.max(1, Math.floor(+cfg.maxSegments || 6)) };
+
+    var lines = (rawLines || []).map(function (l, i) {
+      var r = analyzeLine(l, cfg, ctx); r.rowNo = i + 1; return r;
+    });
+
+    var gmap = {}, groups = [];
+    lines.forEach(function (l) {
+      if (!l.ok) return;
+      var g = gmap[l.groupKey];
+      if (!g) {
+        g = { key: l.groupKey, model: l.modelKey, prodW: l.prodW, prodL: l.prodL,
+              segments: l.segments, strips: l.strips, edge: l.edge,
+              perMotherRoll: l.perMotherRoll, totalQty: 0, rows: [] };
+        gmap[l.groupKey] = g; groups.push(g);
+      }
+      g.totalQty += l.qty; g.rows.push(l);
+    });
+    groups.forEach(function (g) {
+      g.motherRolls = Math.ceil(g.totalQty / g.perMotherRoll - EPS);
+      g.producedRolls = g.motherRolls * g.perMotherRoll;
+      g.usedWidth = R(g.strips * g.prodW, 4);
+      g.utilization = g.usedWidth / MW;
+    });
+
+    var byModel = {}, modelOrder = [];
+    groups.forEach(function (g) {
+      if (!byModel[g.model]) { byModel[g.model] = []; modelOrder.push(g.model); }
+      byModel[g.model].push(g);
+    });
+
+    var models = [];
+    modelOrder.forEach(function (model) {
+      var gs = byModel[model].slice().sort(function (a, b) { return b.prodW - a.prodW; });
+      var simpleRolls = gs.reduce(function (s, g) { return s + g.motherRolls; }, 0);
+      var plan = { model: model, groups: gs, simpleRolls: simpleRolls, chosen: simpleRolls,
+                   mode: 'simple', patterns: [], items: [], produced: [], saving: 0 };
+
+      var sameLen = gs.every(function (g) { return Math.abs(g.prodL - gs[0].prodL) < 1e-9; });
+      var rawItems = [], seen = {};
+      gs.forEach(function (g) {
+        var k = g.prodW + '|' + g.segments;
+        if (seen[k]) { seen[k].need += g.totalQty; }
+        else { var it = { key: k, groupKey: g.key, Wp: g.prodW, n: g.segments, need: g.totalQty }; seen[k] = it; rawItems.push(it); }
+      });
+
+      if (cfg.nest && sameLen && rawItems.length >= 2 && rawItems.length <= 12) {
+        var nst = nestSolve(rawItems, MW);
+        if (nst && nst.motherRolls < simpleRolls) {
+          plan.mode = 'nest';
+          plan.chosen = nst.motherRolls;
+          plan.saving = simpleRolls - nst.motherRolls;
+          plan.items = nst.items; plan.produced = nst.produced;
+          plan.patterns = nst.patterns.map(function (u) {
+            var u2 = 0, segs = [];
+            for (var i = 0; i < nst.items.length; i++) {
+              if (u.counts[i] > 0) {
+                u2 += u.counts[i] * nst.items[i].Wp;
+                segs.push({ w: nst.items[i].Wp, c: u.counts[i], n: nst.items[i].n });
+              }
+            }
+            return { times: u.times, usedWidth: R(u2, 4), edge: R(MW - u2, 4), segs: segs };
+          });
+        }
+      }
+      if (plan.mode === 'simple') {
+        plan.items = gs.map(function (g) { return { key: g.key, groupKey: g.key, Wp: g.prodW, n: g.segments, need: g.totalQty }; });
+        plan.produced = gs.map(function (g) { return g.producedRolls; });
+        plan.patterns = gs.map(function (g) {
+          return { times: g.motherRolls, usedWidth: g.usedWidth, edge: g.edge,
+                   segs: [{ w: g.prodW, c: g.strips, n: g.segments }] };
+        });
+      }
+      models.push(plan);
+    });
+
+    var totals = { orderRolls: 0, motherRolls: 0, inputArea: 0, orderArea: 0, outputArea: 0,
+                   edgeArea: 0, overArea: 0, lossRate: 0, useRate: 0, effLoss: 0 };
+    lines.forEach(function (l) {
+      if (!l.ok) return;
+      totals.orderRolls += l.qty;
+      totals.orderArea += (l.reqW / 1000) * l.reqL * l.qty;
+    });
+    models.forEach(function (p) {
+      totals.motherRolls += p.chosen;
+      p.patterns.forEach(function (pt) { totals.outputArea += pt.times * (pt.usedWidth / 1000) * ML; });
+    });
+    totals.inputArea = totals.motherRolls * (MW / 1000) * ML;
+    totals.edgeArea = Math.max(0, totals.inputArea - totals.outputArea);
+    totals.overArea = Math.max(0, totals.outputArea - totals.orderArea);
+    totals.lossRate = totals.inputArea > 0 ? (totals.inputArea - totals.orderArea) / totals.inputArea : 0;
+    totals.useRate = totals.inputArea > 0 ? totals.orderArea / totals.inputArea : 0;
+    totals.effLoss = totals.inputArea > 0 ? totals.edgeArea / totals.inputArea : 0;
+
+    return {
+      config: { motherWidth: MW, motherLength: ML, widthStep: ctx.step, maxSegments: ctx.maxSeg },
+      lines: lines, groups: groups, models: models, totals: totals,
+      hasValid: lines.some(function (l) { return l.ok; })
+    };
+  }
+
+  return { DEFAULTS: DEFAULTS, calculate: calculate, analyzeLine: analyzeLine,
+           roundUpToStep: roundUpToStep, nestSolve: nestSolve };
+})();
+
+
+/* =========================================================================
+ * 多语言
+ * ========================================================================= */
+var I18N = {
+  zh: {
+    'app.tagline': '在线分切优化器 · 输入订单规格与数量，自动生成最优分切方案',
+    'app.motherRoll': '母卷规格',
+    'step1.title': '输入订单规格与数量',
+    'step1.sub': '填写后点击下方按钮生成方案',
+    'in.order': '订单号', 'in.model': '产品型号',
+    'in.width': '需求宽度 (mm)', 'in.length': '需求长度 (M)', 'in.qty': '数量 (卷)',
+    'in.phOrder': '订单号', 'in.phModel': '产品型号', 'in.phWidth': 'mm', 'in.phLength': 'M', 'in.phQty': '卷',
+    'btn.addRow': '+ 添加一行', 'btn.sample': '载入示例', 'btn.clear': '清空',
+    'btn.calc': '生成最优分切方案', 'btn.recalc': '重新计算 / 返回输入',
+    'btn.exportXls': '导出 Excel', 'btn.exportCsv': '导出 CSV', 'btn.print': '打印 / 存 PDF',
+    'in.pasteHint': '提示：可直接从 Excel 复制多行（列顺序：订单号 / 产品型号 / 宽 / 长 / 卷数），在表格任意输入框按 Ctrl + V 批量粘贴；留空的行不参与计算。',
+    'empty.title': '请填写订单规格与数量，然后点击「生成最优分切方案」',
+    'stale': '订单内容已变更，请点击「重新计算」更新方案',
+    'res.title': '优化方案',
+    'res.sub': '根据母卷规格计算的最优生产规格、排刀与母卷用量',
+
+    'kpi.motherRolls': '所需母卷', 'kpi.rolls': '成品卷数',
+    'kpi.input': '母卷投入', 'kpi.order': '订单需求面积',
+    'kpi.edge': '边料废料', 'kpi.use': '材料利用率',
+    'u.roll': '卷', 'u.sqm': '㎡',
+
+    'th.no': '#', 'th.order': '订单号', 'th.model': '产品型号', 'th.req': '需求规格', 'th.qty': '卷数',
+    'th.opt': '优化规格', 'th.cut': '排刀', 'th.cap': '产能', 'th.mr': '母卷用量', 'th.note': '调整说明',
+    'th.bar': '排刀示意（母卷 {w}mm 展开）', 'th.combo': '分条组合', 'th.len': '成品长度·长度刀数',
+    'th.used': '已用宽度 / 边料', 'th.planRolls': '需用母卷 · 宽度利用率',
+    'th.item': '项目', 'th.wm': '宽 (M)', 'th.lm': '长 (M)', 'th.rolls': '卷数', 'th.sqm': 'SQM. (㎡)', 'th.roll': 'Roll',
+    'th.metric': '指标', 'th.value': '数值', 'th.desc': '说明',
+
+    'tag.same': '同上规格', 'tag.shared': '组合套切共享',
+    'plan.nest': '组合套切（混排）', 'plan.simple': '逐规格独立分切',
+    'plan.saved': '省 {n} 卷母卷', 'plan.mother': '母卷 {a} 卷', 'plan.motherCmp': '母卷 {a} 卷（独立分切需 {b} 卷）',
+    'bar.edge': '边料',
+    'bar.hint': '排刀示意中色块宽度按实际毫米等比绘制，条纹块为无法利用的边料。',
+    'tbl.detail': '订单优化明细', 'tbl.detailSub': '每一行订单 → 优化后的可生产规格',
+    'tbl.plan': '分切排产方案', 'tbl.planSub': '每卷母卷的排刀组合与用量',
+    'tbl.sum': '母卷 / 分切卷汇总', 'tbl.sumSub': '与客户报价表一致的输出格式',
+    'tbl.loss': '损耗分析',
+    'sum.mill': 'Mill Roll（母卷）', 'sum.slit': 'Slit Roll（分切卷）',
+    'sum.total': '合计　母卷 {a} 卷 / 分切卷 {b} 卷',
+    'loss.input': '母卷投入面积', 'loss.inputD': '母卷 {n} 卷 × {w}mm × {l}M',
+    'loss.order': '订单需求面积', 'loss.orderD': '按客户原始需求宽 × 长 × 卷数',
+    'loss.output': '实际产出面积', 'loss.outputD': '按优化后规格产出（含少量超产）',
+    'loss.edge': '边料废料', 'loss.edgeD': '宽度方向切余，不可回收',
+    'loss.over': '超产余量', 'loss.overD': '为满足整数卷而多产出的成品，可入库',
+    'loss.total': '综合损耗率', 'loss.totalD': '（母卷投入 − 订单需求）÷ 母卷投入',
+    'loss.use': '材料利用率', 'loss.useD': '订单需求面积 ÷ 母卷投入面积',
+    'msg.errTitle': '无法分切', 'msg.noteTitle': '规格已调整', 'msg.row': '第 {n} 行',
+
+    'err.badWidth': '需求宽度无效', 'err.badLength': '需求长度无效', 'err.badQty': '数量无效',
+    'err.tooWide': '生产宽度 {w}mm 超过母卷宽度 {mw}mm，无法分切',
+    'err.tooLong': '需求长度 {l}M 超过母卷长度 {ml}M，无法整段分切',
+    'err.noSlit': '无法排刀',
+    'note.qtyRound': '数量已取整为 {q} 卷',
+    'note.segLimit': '需求长度偏短，分段超过 {max} 刀，已按 {max} 刀计为 {l}M',
+    'note.widthUp': '宽度 {from} → {to}mm',
+    'note.lenUp': '长度 {from} → {to}M',
+
+    'adv.title': '高级设置（母卷与计算口径）',
+    'adv.mw': '母卷宽度（mm）', 'adv.ml': '母卷长度（M）', 'adv.step': '宽度标准档位（mm）',
+    'adv.maxSeg': '长度方向最大分段数（刀）',
+    'adv.nest': '同型号组合套切', 'adv.nestDesc': '同型号多规格混排，降低边料损耗',
+    'adv.autoW': '智能宽度微调', 'adv.autoWDesc': '在容差内选利用率更高的宽度档位',
+    'adv.autoTol': '宽度微调上限（mm）',
+    'footer.rules': '计算原则：宽度向上取整至标准档位（略大于需求宽）｜长度按母卷长度整段取整｜同型号同规格合并数量后分配母卷｜同型号支持组合套切以最小化废料'
+  },
+  en: {
+    'app.tagline': 'Online slitting optimizer · Enter order specs and quantities to get the optimal slitting plan',
+    'app.motherRoll': 'Mother roll',
+    'step1.title': 'Enter order specs & quantity',
+    'step1.sub': 'fill in, then generate the plan',
+    'in.order': 'Order No.', 'in.model': 'Product',
+    'in.width': 'Width (mm)', 'in.length': 'Length (M)', 'in.qty': 'Rolls',
+    'in.phOrder': 'Order No.', 'in.phModel': 'Product', 'in.phWidth': 'mm', 'in.phLength': 'M', 'in.phQty': 'rolls',
+    'btn.addRow': '+ Add row', 'btn.sample': 'Load sample', 'btn.clear': 'Clear',
+    'btn.calc': 'Generate Optimal Plan', 'btn.recalc': 'Recalculate / Back to input',
+    'btn.exportXls': 'Export Excel', 'btn.exportCsv': 'Export CSV', 'btn.print': 'Print / PDF',
+    'in.pasteHint': 'Tip: copy multiple rows from Excel (columns: Order No. / Product / Width / Length / Rolls), then press Ctrl + V in any cell to paste in bulk. Blank rows are ignored.',
+    'empty.title': 'Enter the order specs and quantity, then click "Generate Optimal Plan"',
+    'stale': 'Order data changed — click "Recalculate" to refresh the plan',
+    'res.title': 'Optimized Plan',
+    'res.sub': 'Optimal production specs, slitting layout and mother-roll usage',
+
+    'kpi.motherRolls': 'Mother rolls', 'kpi.rolls': 'Finished rolls',
+    'kpi.input': 'Mother-roll area', 'kpi.order': 'Order area',
+    'kpi.edge': 'Edge waste', 'kpi.use': 'Material yield',
+    'u.roll': 'rolls', 'u.sqm': 'm²',
+
+    'th.no': '#', 'th.order': 'Order No.', 'th.model': 'Product', 'th.req': 'Requested', 'th.qty': 'Rolls',
+    'th.opt': 'Optimized spec', 'th.cut': 'Slitting', 'th.cap': 'Yield', 'th.mr': 'Mother rolls', 'th.note': 'Adjustment',
+    'th.bar': 'Slitting layout (mother roll {w}mm)',
+    'th.combo': 'Strip combination', 'th.len': 'Finished length · cuts',
+    'th.used': 'Used / edge', 'th.planRolls': 'Mother rolls · width utilization',
+    'th.item': 'Item', 'th.wm': 'Width (M)', 'th.lm': 'Length (M)', 'th.rolls': 'Rolls', 'th.sqm': 'SQM. (m²)', 'th.roll': 'Roll',
+    'th.metric': 'Metric', 'th.value': 'Value', 'th.desc': 'Notes',
+
+    'tag.same': 'same spec', 'tag.shared': 'shared in combined layout',
+    'plan.nest': 'Combined layout', 'plan.simple': 'Dedicated layout per spec',
+    'plan.saved': 'saves {n} mother rolls', 'plan.mother': '{a} mother rolls',
+    'plan.motherCmp': '{a} mother rolls (dedicated mode needs {b})',
+    'bar.edge': 'edge',
+    'bar.hint': 'Segment widths are drawn to scale in millimetres; the striped block is unusable edge trim.',
+    'tbl.detail': 'Order Optimization Detail', 'tbl.detailSub': 'Each order line → optimized production spec',
+    'tbl.plan': 'Slitting Plan', 'tbl.planSub': 'Strip layout and usage per mother roll',
+    'tbl.sum': 'Mother Roll / Slit Roll Summary', 'tbl.sumSub': 'Output format consistent with the customer quotation sheet',
+    'tbl.loss': 'Loss Analysis',
+    'sum.mill': 'Mill Roll', 'sum.slit': 'Slit Roll',
+    'sum.total': 'Total　{a} mother rolls / {b} slit rolls',
+    'loss.input': 'Mother-roll input', 'loss.inputD': '{n} rolls × {w}mm × {l}M',
+    'loss.order': 'Order requirement', 'loss.orderD': 'Customer width × length × rolls',
+    'loss.output': 'Actual output', 'loss.outputD': 'Produced to optimized specs (incl. slight overproduction)',
+    'loss.edge': 'Edge waste', 'loss.edgeD': 'Trimmed off across the width — not recoverable',
+    'loss.over': 'Overproduction', 'loss.overD': 'Extra finished rolls from rounding up — can be stocked',
+    'loss.total': 'Overall loss rate', 'loss.totalD': '(mother-roll input − order requirement) ÷ mother-roll input',
+    'loss.use': 'Material yield', 'loss.useD': 'Order requirement ÷ mother-roll input',
+    'msg.errTitle': 'Cannot be slit', 'msg.noteTitle': 'Specs adjusted', 'msg.row': 'Row {n}',
+
+    'err.badWidth': 'invalid width', 'err.badLength': 'invalid length', 'err.badQty': 'invalid quantity',
+    'err.tooWide': 'production width {w}mm exceeds mother roll width {mw}mm — cannot be slit',
+    'err.tooLong': 'requested length {l}M exceeds mother roll length {ml}M — cannot be cut into whole segments',
+    'err.noSlit': 'no feasible layout',
+    'note.qtyRound': 'quantity rounded up to {q} rolls',
+    'note.segLimit': 'length too short; over {max} cuts, rounded to {max} cuts = {l}M',
+    'note.widthUp': 'width {from} → {to}mm',
+    'note.lenUp': 'length {from} → {to}M',
+
+    'adv.title': 'Advanced settings (mother roll & rules)',
+    'adv.mw': 'Mother roll width (mm)', 'adv.ml': 'Mother roll length (M)', 'adv.step': 'Width step (mm)',
+    'adv.maxSeg': 'Max length segments (cuts)',
+    'adv.nest': 'Combined layout for same product', 'adv.nestDesc': 'Mix specs of one product to reduce edge waste',
+    'adv.autoW': 'Smart width tuning', 'adv.autoWDesc': 'Pick the width step with the best utilization within tolerance',
+    'adv.autoTol': 'Width tuning tolerance (mm)',
+    'footer.rules': 'Rules: width rounded up to the standard step (slightly above requested) | length cut into whole segments of the mother roll | lines with the same product & spec are merged before allocating mother rolls | combined layout minimizes waste'
+  }
+};
+
+var lang = 'zh';
+function t(key, p) {
+  var s = (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
+  if (p) s = s.replace(/\{(\w+)\}/g, function (m, k) { return p[k] === undefined ? m : p[k]; });
+  return s;
+}
+function tmsg(m) { return m ? t(m.c, m.p) : ''; }
+
+/* =========================================================================
+ * 界面逻辑
+ * ========================================================================= */
+(function () {
+  'use strict';
+  var C = SlittingCalc;
+
+  var SAMPLE = [
+    { order: 'SO-251001', model: 'AWS80H60 Art Paper SA Semi-gloss HM', width: 130, length: 1500, qty: 16 },
+    { order: 'SO-251001', model: 'AWS80H60 Art Paper SA Semi-gloss HM', width: 140, length: 1500, qty: 14 },
+    { order: 'SO-251001', model: 'AWS80H60 Art Paper SA Semi-gloss HM', width: 150, length: 1500, qty: 13 },
+    { order: 'SO-251001', model: 'AWS80H60 Art Paper SA Semi-gloss HM', width: 175, length: 1500, qty: 12 },
+    { order: 'SO-251001', model: 'AWS80H60 Art Paper SA Semi-gloss HM', width: 200, length: 1500, qty: 10 },
+    { order: 'SO-251001', model: 'AWS80H60 Art Paper SA Semi-gloss HM', width: 220, length: 1500, qty: 9 },
+    { order: 'SO-251001', model: 'AWS80H60 Art Paper SA Semi-gloss HM', width: 250, length: 1500, qty: 26 },
+    { order: 'SO-251001', model: 'AWS80H60 Art Paper SA Semi-gloss HM', width: 275, length: 1500, qty: 24 },
+    { order: 'SO-251001', model: 'AWS80H60 Art Paper SA Semi-gloss HM', width: 300, length: 1500, qty: 34 },
+    { order: 'SO-251001', model: 'AWS80H60 Art Paper SA Semi-gloss HM', width: 330, length: 1500, qty: 450 },
+    { order: 'SO-251002', model: 'PWG6060 PP Synthetic Paper SA Gloss', width: 250, length: 1500, qty: 25 },
+    { order: 'SO-251002', model: 'PWG6060 PP Synthetic Paper SA Gloss', width: 300, length: 1500, qty: 7 }
+  ];
+
+  var PALETTE = ['#1668dc', '#12a150', '#e0803a', '#8b5cf6', '#0ea5b7', '#d94f70',
+                 '#5b7c99', '#c9a227', '#4f7cff', '#2fa36b', '#9a6dd7', '#c2683c'];
+
+  var state = { rows: [], cfg: Object.assign({}, C.DEFAULTS), last: null, stale: false, seq: 0 };
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+    });
+  }
+  function locale() { return lang === 'en' ? 'en-US' : 'zh-CN'; }
+  function trimNum(x) { return isFinite(x) ? String(Math.round(x * 1000) / 1000) : '—'; }
+  function int(x) { return isFinite(x) ? Math.round(x).toLocaleString(locale()) : '—'; }
+  function dec(x, d) { return isFinite(x) ? Number(x).toLocaleString(locale(), { minimumFractionDigits: d, maximumFractionDigits: d }) : '—'; }
+  function pc(x, d) { return isFinite(x) ? (x * 100).toFixed(d === undefined ? 2 : d) + '%' : '—'; }
+
+  /* ---------------- 静态节点多语言 ---------------- */
+  function applyI18n() {
+    document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function (n) {
+      n.textContent = t(n.getAttribute('data-i18n'));
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.lang button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-lang') === lang);
+    });
+    updateBadge();
+  }
+
+  /* ---------------- 订单表 ---------------- */
+  function newRow(d) {
+    d = d || {};
+    return { id: ++state.seq, order: d.order || '', model: d.model || '',
+             width: d.width === undefined ? '' : d.width,
+             length: d.length === undefined ? '' : d.length,
+             qty: d.qty === undefined ? '' : d.qty };
+  }
+  function rowHTML(r, i) {
+    return '<tr data-id="' + r.id + '">' +
+      '<td class="c-idx">' + (i + 1) + '</td>' +
+      '<td><input data-k="order" value="' + esc(r.order) + '" placeholder="' + esc(t('in.phOrder')) + '"></td>' +
+      '<td><input data-k="model" value="' + esc(r.model) + '" placeholder="' + esc(t('in.phModel')) + '"></td>' +
+      '<td class="c-num"><input class="num" data-k="width" type="number" step="0.5" value="' + esc(r.width) + '" placeholder="' + esc(t('in.phWidth')) + '"></td>' +
+      '<td class="c-num"><input class="num" data-k="length" type="number" step="1" value="' + esc(r.length) + '" placeholder="' + esc(t('in.phLength')) + '"></td>' +
+      '<td class="c-num"><input class="num" data-k="qty" type="number" step="1" value="' + esc(r.qty) + '" placeholder="' + esc(t('in.phQty')) + '"></td>' +
+      '<td class="c-op"><button type="button" class="icon-btn" data-del="' + r.id + '">✕</button></td>' +
+      '</tr>';
+  }
+  function renderInputs() { el('inputBody').innerHTML = state.rows.map(rowHTML).join(''); }
+  function readRowValues() {
+    return state.rows.map(function (r) { return { order: r.order, model: r.model, width: r.width, length: r.length, qty: r.qty }; });
+  }
+  function syncRow(id, k, v) {
+    for (var i = 0; i < state.rows.length; i++) if (state.rows[i].id === id) { state.rows[i][k] = v; return; }
+  }
+  function updateBadge() {
+    el('motherBadge').textContent = trimNum(state.cfg.motherWidth) + ' mm × ' + trimNum(state.cfg.motherLength) + ' M';
+  }
+
+  /* ---------------- 计算与渲染 ---------------- */
+  function emptyHTML() {
+    return '<div class="card"><div class="empty"><div class="big">▤</div>' +
+      '<div class="t">' + esc(t('empty.title')) + '</div></div></div>';
+  }
+  function doCalc(scroll) {
+    var res = C.calculate(readRowValues(), state.cfg);
+    state.last = res; state.stale = false;
+    renderResult(res);
+    el('btnCalcLabel').textContent = t('btn.recalc');
+    if (scroll && el('resultHost').scrollIntoView) {
+      el('resultHost').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+  function resetToInitial() {
+    state.rows = [newRow(), newRow(), newRow()];
+    state.last = null; state.stale = false; state.seq = 0;
+    renderInputs();
+    el('resultHost').innerHTML = '';
+    el('btnCalcLabel').textContent = t('btn.calc');
+    if (el('resultHost').scrollIntoView) {
+      el('resultHost').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+  function markStale() {
+    if (!state.last || state.stale) return;
+    state.stale = true;
+    var bar = el('staleBar');
+    if (bar) { bar.textContent = t('stale'); bar.style.display = ''; }
+    var body = el('resultBody');
+    if (body) body.classList.add('dimmed');
+    el('btnCalcLabel').textContent = t('btn.recalc');
+  }
+
+  function renderResult(res) {
+    var host = el('resultHost');
+    if (!res.hasValid) { host.innerHTML = emptyHTML(); return; }
+    host.innerHTML =
+      '<div class="result-head no-print"><h2><span class="num">2</span>' + esc(t('res.title')) + '</h2>' +
+      '<div class="btn-row">' +
+        '<button type="button" class="btn btn-primary" id="btnExportXls">' + esc(t('btn.exportXls')) + '</button>' +
+        '<button type="button" class="btn" id="btnExportCsv">' + esc(t('btn.exportCsv')) + '</button>' +
+        '<button type="button" class="btn" id="btnPrint">' + esc(t('btn.print')) + '</button>' +
+      '</div></div>' +
+      '<div id="staleBar" class="note-box stale no-print" style="display:none"></div>' +
+      '<div id="resultBody">' +
+        renderKPI(res) + renderNotices(res) + renderDetail(res) +
+        renderPlans(res) + renderSummaryTable(res) + renderLoss(res) +
+      '</div>';
+  }
+
+  function kpi(k, v, u, cls) {
+    return '<div class="kpi ' + (cls || '') + '"><div class="k">' + esc(k) + '</div>' +
+      '<div class="v">' + v + (u ? '<span class="u">' + esc(u) + '</span>' : '') + '</div></div>';
+  }
+  function renderKPI(res) {
+    var x = res.totals;
+    return '<div class="kpis">' +
+      kpi(t('kpi.motherRolls'), int(x.motherRolls), t('u.roll'), 'hi') +
+      kpi(t('kpi.rolls'), int(x.orderRolls), t('u.roll')) +
+      kpi(t('kpi.input'), int(x.inputArea), t('u.sqm')) +
+      kpi(t('kpi.order'), int(x.orderArea), t('u.sqm')) +
+      kpi(t('kpi.edge'), int(x.edgeArea), t('u.sqm') + ' · ' + pc(x.effLoss, 1), 'warn') +
+      kpi(t('kpi.use'), pc(x.useRate, 1), '', x.useRate > 0.8 ? 'good' : 'warn') +
+      '</div>';
+  }
+
+  function renderNotices(res) {
+    var errs = [], notes = [];
+    res.lines.forEach(function (l) {
+      if (!l.ok && l.errors.length) errs.push(t('msg.row', { n: l.rowNo }) + '：' + l.errors.map(tmsg).join('；'));
+      else if (l.notes.length) notes.push(t('msg.row', { n: l.rowNo }) + '：' + l.notes.map(tmsg).join('；'));
+    });
+    var h = '';
+    if (errs.length) h += '<div class="note-box err"><b>' + esc(t('msg.errTitle')) + '</b><ul><li>' + errs.map(esc).join('</li><li>') + '</li></ul></div>';
+    if (notes.length) h += '<div class="note-box warn"><b>' + esc(t('msg.noteTitle')) + '</b><ul><li>' + notes.map(esc).join('</li><li>') + '</li></ul></div>';
+    return h;
+  }
+
+  function renderDetail(res) {
+    var lastModel = null;
+    var rows = res.lines.map(function (l) {
+      var i = l.rowNo - 1;
+      if (!l.ok) {
+        return '<tr><td class="c-idx" style="text-align:center;color:#94a3b8">' + l.rowNo + '</td>' +
+          '<td>' + esc(l.order || '—') + '</td><td>' + esc(l.model || '—') + '</td>' +
+          '<td colspan="6" style="color:#dc2626">' + esc(l.errors.map(tmsg).join('；')) + '</td></tr>';
+      }
+      var g = res.groups.filter(function (x) { return x.key === l.groupKey; })[0];
+      var sameAsPrev = i > 0 && res.lines[i - 1].ok && res.lines[i - 1].groupKey === l.groupKey;
+      var plan = res.models.filter(function (p) { return p.model === l.modelKey; })[0];
+      var mr;
+      if (plan && plan.mode === 'nest') {
+        mr = (lastModel === l.modelKey) ? '<span style="color:#cbd5e1">〃</span>'
+          : '<span class="tag gray">' + esc(t('tag.shared')) + ' · ' + plan.chosen + '</span>';
+      } else if (g) {
+        mr = (lastModel === l.modelKey && sameAsPrev) ? '<span style="color:#cbd5e1">〃</span>' : int(g.motherRolls);
+      } else { mr = '—'; }
+      lastModel = l.modelKey;
+      return '<tr>' +
+        '<td class="c-idx" style="text-align:center;color:#94a3b8">' + l.rowNo + '</td>' +
+        '<td>' + esc(l.order || '—') + '</td>' +
+        '<td>' + esc(l.modelKey || '—') + '</td>' +
+        '<td class="n">' + trimNum(l.reqW) + ' × ' + trimNum(l.reqL) + 'M</td>' +
+        '<td class="n">' + int(l.qty) + '</td>' +
+        '<td class="mono">' + trimNum(l.prodW) + 'mm × ' + trimNum(l.prodL) + 'M' +
+          (sameAsPrev ? ' <span class="tag gray">' + esc(t('tag.same')) + '</span>' : '') + '</td>' +
+        '<td class="n">' + l.strips + ' × ' + l.segments + '</td>' +
+        '<td class="n">' + l.perMotherRoll + '</td>' +
+        '<td class="n">' + mr + '</td>' +
+        '<td>' + (l.notes.length ? '<span class="tag warn">' + esc(l.notes.map(tmsg).join('；')) + '</span>'
+                                 : '<span style="color:#94a3b8">—</span>') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    return '<div class="section-title"><span class="bar"></span>' + esc(t('tbl.detail')) +
+      ' <small>' + esc(t('tbl.detailSub')) + '</small></div>' +
+      '<div class="card"><div class="table-wrap"><table class="res"><thead><tr>' +
+      '<th>' + esc(t('th.no')) + '</th><th>' + esc(t('th.order')) + '</th><th>' + esc(t('th.model')) + '</th>' +
+      '<th class="n">' + esc(t('th.req')) + '</th><th class="n">' + esc(t('th.qty')) + '</th>' +
+      '<th>' + esc(t('th.opt')) + '</th><th class="n">' + esc(t('th.cut')) + '</th>' +
+      '<th class="n">' + esc(t('th.cap')) + '</th><th class="n">' + esc(t('th.mr')) + '</th>' +
+      '<th>' + esc(t('th.note')) + '</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  }
+
+  function slitBar(segs, MW, colorMap) {
+    var total = segs.reduce(function (a, s) { return a + s.w * s.c; }, 0);
+    var h = '<div class="slitbar">';
+    segs.forEach(function (s) {
+      var mm = s.w * s.c, p = mm / MW * 100;
+      h += '<div class="slit" style="width:' + p.toFixed(4) + '%;background:' + (colorMap[s.w] || '#64748b') + '">' +
+           (p >= 9 ? (s.c + '×' + trimNum(s.w)) : '') + '</div>';
+    });
+    var edge = MW - total;
+    if (edge > 0.01) {
+      var pe = edge / MW * 100;
+      h += '<div class="slit edge" style="width:' + pe.toFixed(4) + '%">' + (pe >= 9 ? esc(t('bar.edge')) : '') + '</div>';
+    }
+    return h + '</div>';
+  }
+
+  function renderPlans(res) {
+    var MW = res.config.motherWidth;
+    var colorMap = {};
+    var all = res.groups.map(function (g) { return g.prodW; })
+      .filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; });
+    all.forEach(function (w, i) { colorMap[w] = PALETTE[i % PALETTE.length]; });
+
+    var body = '';
+    res.models.forEach(function (p) {
+      body += '<tr class="model-head"><td colspan="5"><span>' + esc(p.model || '—') + '</span>' +
+        '<span class="tag info" style="margin-left:10px">' + esc(t(p.mode === 'nest' ? 'plan.nest' : 'plan.simple')) + '</span>' +
+        (p.mode === 'nest' ? '<span class="tag ok" style="margin-left:6px">' + esc(t('plan.saved', { n: p.saving })) + '</span>' : '') +
+        '<span style="margin-left:10px;color:#64748b;font-weight:400">' +
+          esc(p.mode === 'nest' ? t('plan.motherCmp', { a: p.chosen, b: p.simpleRolls }) : t('plan.mother', { a: p.chosen })) +
+        '</span></td></tr>';
+
+      p.patterns.forEach(function (pt) {
+        var combo = pt.segs.map(function (s) { return s.c + '×' + trimNum(s.w) + 'mm'; }).join(' + ');
+        var lenTxt = pt.segs.length
+          ? trimNum(res.config.motherLength / pt.segs[0].n) + ' M <span style="color:#94a3b8">·</span> ' + pt.segs[0].n
+          : '';
+        body += '<tr>' +
+          '<td style="min-width:290px">' + slitBar(pt.segs, MW, colorMap) + '</td>' +
+          '<td style="white-space:nowrap">' + esc(combo) + '</td>' +
+          '<td style="white-space:nowrap">' + lenTxt + '</td>' +
+          '<td class="n">' + trimNum(pt.usedWidth) + '<span style="color:#94a3b8"> / </span>' + trimNum(pt.edge) + ' mm</td>' +
+          '<td class="n">' + pt.times + ' · ' + pc(pt.usedWidth / MW, 1) + '</td>' +
+          '</tr>';
+      });
+    });
+
+    return '<div class="section-title"><span class="bar"></span>' + esc(t('tbl.plan')) +
+      ' <small>' + esc(t('tbl.planSub')) + '</small></div>' +
+      '<div class="card"><div class="table-wrap"><table class="res"><thead><tr>' +
+      '<th>' + esc(t('th.bar', { w: trimNum(MW) })) + '</th><th>' + esc(t('th.combo')) + '</th>' +
+      '<th>' + esc(t('th.len')) + '</th><th class="n">' + esc(t('th.used')) + '</th>' +
+      '<th class="n">' + esc(t('th.planRolls')) + '</th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table></div></div>' +
+      '<p class="hint" style="margin-top:-6px">' + esc(t('bar.hint')) + '</p>';
+  }
+
+  function renderSummaryTable(res) {
+    var MW = res.config.motherWidth, rows = '', totalSlit = 0;
+    res.models.forEach(function (p) {
+      var inArea = p.chosen * (MW / 1000) * res.config.motherLength;
+      rows += '<tr class="model-head"><td colspan="6">' + esc(p.model || '—') + '</td></tr>';
+      rows += '<tr><td>' + esc(t('sum.mill')) + '</td><td class="n">' + (MW / 1000).toFixed(3) + '</td>' +
+        '<td class="n">' + trimNum(res.config.motherLength) + '</td><td class="n">' + p.chosen + '</td>' +
+        '<td class="n">' + dec(inArea, 0) + '</td><td class="n">' + p.chosen + '</td></tr>';
+      p.items.forEach(function (it, i) {
+        var rolls = p.produced[i];
+        totalSlit += rolls;
+        rows += '<tr><td>' + esc(t('sum.slit')) + '</td>' +
+          '<td class="n">' + (it.Wp / 1000).toFixed(3) + '</td>' +
+          '<td class="n">' + trimNum(res.config.motherLength / it.n) + '</td>' +
+          '<td class="n">' + rolls + '</td>' +
+          '<td class="n">' + dec((it.Wp / 1000) * (res.config.motherLength / it.n) * rolls, 0) + '</td>' +
+          '<td class="n">' + rolls + '</td></tr>';
+      });
+    });
+    var x = res.totals;
+    return '<div class="section-title"><span class="bar"></span>' + esc(t('tbl.sum')) +
+      ' <small>' + esc(t('tbl.sumSub')) + '</small></div>' +
+      '<div class="card"><div class="table-wrap"><table class="res"><thead><tr>' +
+      '<th>' + esc(t('th.item')) + '</th><th class="n">' + esc(t('th.wm')) + '</th><th class="n">' + esc(t('th.lm')) + '</th>' +
+      '<th class="n">' + esc(t('th.rolls')) + '</th><th class="n">' + esc(t('th.sqm')) + '</th><th class="n">' + esc(t('th.roll')) + '</th>' +
+      '</tr></thead><tbody>' + rows +
+      '<tr class="model-head"><td colspan="3">' + esc(t('sum.total', { a: x.motherRolls, b: totalSlit })) + '</td>' +
+      '<td class="n">' + totalSlit + '</td><td class="n">' + dec(x.outputArea, 0) + '</td><td class="n">' + x.motherRolls + '</td></tr>' +
+      '</tbody></table></div></div>';
+  }
+
+  function renderLoss(res) {
+    var x = res.totals;
+    var L = function (k, v, d) {
+      return '<tr><td>' + k + '</td><td class="n">' + v + '</td><td style="color:#64748b">' + d + '</td></tr>';
+    };
+    return '<div class="section-title"><span class="bar"></span>' + esc(t('tbl.loss')) + '</div>' +
+      '<div class="card"><div class="table-wrap"><table class="res"><thead><tr>' +
+      '<th>' + esc(t('th.metric')) + '</th><th class="n">' + esc(t('th.value')) + '</th><th>' + esc(t('th.desc')) + '</th>' +
+      '</tr></thead><tbody>' +
+      L(esc(t('loss.input')), dec(x.inputArea, 0) + ' ' + t('u.sqm') + ' <span style="color:#cbd5e1">≈</span> ' + int(x.motherRolls) + ' ' + esc(t('u.roll')),
+        esc(t('loss.inputD', { n: x.motherRolls, w: trimNum(res.config.motherWidth), l: trimNum(res.config.motherLength) }))) +
+      L(esc(t('loss.order')), dec(x.orderArea, 0) + ' ' + t('u.sqm'), esc(t('loss.orderD'))) +
+      L(esc(t('loss.output')), dec(x.outputArea, 0) + ' ' + t('u.sqm'), esc(t('loss.outputD'))) +
+      L(esc(t('loss.edge')), dec(x.edgeArea, 0) + ' ' + t('u.sqm') + ' · ' + pc(x.effLoss, 2), esc(t('loss.edgeD'))) +
+      L(esc(t('loss.over')), dec(x.overArea, 0) + ' ' + t('u.sqm') + ' · ' + pc(x.inputArea ? x.overArea / x.inputArea : 0, 2), esc(t('loss.overD'))) +
+      L('<b>' + esc(t('loss.total')) + '</b>', '<b>' + pc(x.lossRate, 2) + '</b>', esc(t('loss.totalD'))) +
+      L('<b>' + esc(t('loss.use')) + '</b>', '<b>' + pc(x.useRate, 2) + '</b>', esc(t('loss.useD'))) +
+      '</tbody></table></div></div>';
+  }
+
+  /* ---------------- 事件 ---------------- */
+  function boot() {
+    state.rows = [newRow(), newRow(), newRow()];
+    renderInputs();
+    applyI18n();
+    el('resultHost').setAttribute('data-ready', '1');
+
+    el('inputBody').addEventListener('input', function (e) {
+      var inp = e.target;
+      if (!inp.dataset || !inp.dataset.k) return;
+      syncRow(+inp.closest('tr').dataset.id, inp.dataset.k, inp.value);
+      markStale();
+    });
+    el('inputBody').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-del]');
+      if (!b) return;
+      state.rows = state.rows.filter(function (r) { return r.id !== +b.dataset.del; });
+      if (!state.rows.length) state.rows.push(newRow());
+      renderInputs(); markStale();
+    });
+    el('inputBody').addEventListener('paste', function (e) {
+      var txt = (e.clipboardData || window.clipboardData).getData('text');
+      if (!txt || (txt.indexOf('\t') < 0 && txt.indexOf('\n') < 0)) return;
+      e.preventDefault();
+      var ls = txt.replace(/\r/g, '').split('\n').filter(function (s) { return s.trim() !== ''; });
+      var tr = e.target.closest('tr');
+      var startIdx = tr ? state.rows.findIndex(function (r) { return r.id === +tr.dataset.id; }) : 0;
+      if (startIdx < 0) startIdx = 0;
+      var keys = ['order', 'model', 'width', 'length', 'qty'];
+      ls.forEach(function (line, k) {
+        var target = state.rows[startIdx + k];
+        if (!target) { target = newRow(); state.rows.push(target); }
+        line.split('\t').forEach(function (v, ci) { if (ci < keys.length) target[keys[ci]] = v.trim(); });
+      });
+      renderInputs(); markStale();
+    });
+
+    el('btnAddRow').addEventListener('click', function () {
+      state.rows.push(newRow()); renderInputs();
+      var inputs = el('inputBody').querySelectorAll('tr:last-child input');
+      if (inputs[0]) inputs[0].focus();
+    });
+    el('btnSample').addEventListener('click', function () { state.rows = SAMPLE.map(newRow); renderInputs(); doCalc(false); });
+    el('btnClear').addEventListener('click', function () { state.rows = [newRow(), newRow(), newRow()]; renderInputs(); doCalc(false); });
+    el('btnCalc').addEventListener('click', function () {
+      if (state.last && !state.stale) {
+        resetToInitial();
+      } else {
+        doCalc(true);
+      }
+    });
+
+    document.querySelector('.lang').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-lang]');
+      if (!b) return;
+      lang = b.getAttribute('data-lang');
+      applyI18n(); renderInputs();
+      if (state.last) renderResult(state.last);
+      el('btnCalcLabel').textContent = state.last ? t('btn.recalc') : t('btn.calc');
+      if (state.stale) markStale();
+    });
+
+    var bindNum = function (id, key) {
+      el(id).addEventListener('input', function () {
+        var v = parseFloat(this.value);
+        if (isFinite(v) && v > 0) { state.cfg[key] = v; updateBadge(); markStale(); }
+      });
+    };
+    bindNum('cfgMW', 'motherWidth'); bindNum('cfgML', 'motherLength');
+    bindNum('cfgStep', 'widthStep'); bindNum('cfgMaxSeg', 'maxSegments');
+    el('cfgAutoTol').addEventListener('input', function () {
+      var v = parseFloat(this.value);
+      if (isFinite(v) && v >= 0) { state.cfg.autoWidthTol = v; markStale(); }
+    });
+    el('cfgNest').addEventListener('change', function () { state.cfg.nest = this.checked; markStale(); });
+    el('cfgAutoW').addEventListener('change', function () { state.cfg.autoWidth = this.checked; markStale(); });
+
+    el('resultHost').addEventListener('click', function (e) {
+      if (!state.last) return;
+      if (e.target.id === 'btnExportXls') exportExcel(state.last);
+      if (e.target.id === 'btnExportCsv') exportCsv(state.last);
+      if (e.target.id === 'btnPrint') window.print();
+    });
+  }
+
+  /* ---------------- 导出 ---------------- */
+  function matrix(res) {
+    var MW = res.config.motherWidth, rows = [];
+    rows.push(['Tecnia Online Slitting Optimizer']);
+    rows.push([t('app.motherRoll'), trimNum(MW) + 'mm × ' + trimNum(res.config.motherLength) + 'M',
+               '', t('adv.step'), trimNum(res.config.widthStep) + 'mm', t('adv.maxSeg') + ': ' + res.config.maxSegments]);
+    rows.push([]);
+    rows.push([t('th.item'), t('th.wm'), t('th.lm'), t('th.rolls'), t('th.sqm'), t('th.roll')]);
+    res.models.forEach(function (p) {
+      rows.push([p.model + '  [' + t(p.mode === 'nest' ? 'plan.nest' : 'plan.simple') + ']  ' + t('plan.mother', { a: p.chosen })]);
+      rows.push([t('sum.mill'), (MW / 1000).toFixed(3), trimNum(res.config.motherLength), p.chosen,
+                 Math.round(p.chosen * (MW / 1000) * res.config.motherLength), p.chosen]);
+      p.items.forEach(function (it, i) {
+        rows.push([t('sum.slit'), (it.Wp / 1000).toFixed(3), trimNum(res.config.motherLength / it.n),
+                   p.produced[i], Math.round((it.Wp / 1000) * (res.config.motherLength / it.n) * p.produced[i]), p.produced[i]]);
+      });
+    });
+    rows.push([]);
+    rows.push([t('tbl.loss')]);
+    rows.push([t('loss.input'), Math.round(res.totals.inputArea), t('loss.order'), Math.round(res.totals.orderArea)]);
+    rows.push([t('loss.edge'), Math.round(res.totals.edgeArea), t('loss.over'), Math.round(res.totals.overArea)]);
+    rows.push([t('loss.total'), pc(res.totals.lossRate, 2), t('loss.use'), pc(res.totals.useRate, 2)]);
+    return rows;
+  }
+  function stamp() {
+    var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+  }
+  function saveBlob(name, content, mime) {
+    var blob = new Blob(['\ufeff' + content], { type: mime });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  function exportCsv(res) {
+    var csv = matrix(res).map(function (r) {
+      return r.map(function (c) { return '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"'; }).join(',');
+    }).join('\r\n');
+    saveBlob('Tecnia-Slitting-' + stamp() + '.csv', csv, 'text/csv;charset=utf-8');
+  }
+  function exportExcel(res) {
+    var m = matrix(res), cols = m.reduce(function (a, r) { return Math.max(a, r.length); }, 0);
+    var html = '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8">' +
+      '<style>td,th{border:1px solid #cbd5e1;font-family:"Microsoft YaHei";font-size:11pt;padding:4px 8px}' +
+      'th{background:#eaf2ff;font-weight:bold}.t{font-size:14pt;font-weight:bold}.h{background:#f1f5f9;font-weight:bold}</style>' +
+      '</head><body><table>';
+    m.forEach(function (r, ri) {
+      var isHead = ri === 0 || r[0] === t('th.item') || r[0] === t('tbl.loss');
+      if (isHead) {
+        html += '<tr><td class="t" colspan="' + cols + '">' + String(r[0] || '').replace(/</g, '&lt;') + '</td></tr>';
+      } else {
+        html += '<tr>';
+        r.forEach(function (c) {
+          var cls = (typeof c === 'string' && c.indexOf('[') > -1) ? ' class="h"' : '';
+          html += '<td' + cls + '>' + String(c == null ? '' : c).replace(/</g, '&lt;') + '</td>';
+        });
+        for (var i = r.length; i < cols; i++) html += '<td></td>';
+        html += '</tr>';
+      }
+    });
+    html += '</table></body></html>';
+    saveBlob('Tecnia-Slitting-' + stamp() + '.xls', html, 'application/vnd.ms-excel;charset=utf-8');
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
