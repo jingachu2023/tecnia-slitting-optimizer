@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tecnia Online Slitting Optimizer</title>
-<meta name="description" content="Tecnia Online Slitting Optimizer — 在线分切优化器：输入订单规格与数量，自动生成最优分切方案与母卷用量。">
+<meta name="description" content="Tecnia Online Slitting Optimizer — 在线分切计算器：输入订单规格与数量，自动生成最优分切方案与母卷用量。">
 <style>
   :root{
     --bg:#eef2f7; --card:#ffffff; --line:#e2e8f0; --line2:#eef2f7;
@@ -222,7 +222,7 @@
       </div>
       <div class="mother-badge">
         <span data-i18n="app.motherRoll"></span>
-        <strong id="motherBadge">1530 mm × 6000 M</strong>
+        <strong id="motherBadge">1650 mm × 6000 M</strong>
       </div>
     </div>
   </div>
@@ -230,8 +230,7 @@
   <!-- ① 客户输入 -->
   <section class="card no-print">
     <div class="card-head">
-      <h2><span class="num">1</span><span data-i18n="step1.title"></span>
-        <span class="sub" data-i18n="step1.sub"></span></h2>
+      <h2><span class="num">1</span><span data-i18n="step1.title"></span></h2>
       <div class="btn-row">
         <button type="button" class="btn" id="btnAddRow" data-i18n="btn.addRow"></button>
         <button type="button" class="btn" id="btnSample" data-i18n="btn.sample"></button>
@@ -269,7 +268,7 @@
     <div class="cfg-grid">
       <div class="field">
         <label data-i18n="adv.mw"></label>
-        <input type="number" id="cfgMW" value="1530" min="1" step="1">
+        <input type="number" id="cfgMW" value="1650" min="1" step="1">
       </div>
       <div class="field">
         <label data-i18n="adv.ml"></label>
@@ -305,7 +304,7 @@
 
 <script>
 /* =========================================================================
- * 分切计算引擎 — 母卷（Mill Roll）：宽 × 长（默认 1530mm × 6000M）
+ * 分切计算引擎 — 母卷（Mill Roll）：宽 × 长（默认 1650mm × 6000M）
  * 提示信息以 {c:code, p:params} 结构返回，由界面层按语言渲染。
  * ========================================================================= */
 var SlittingCalc = (function () {
@@ -313,7 +312,7 @@ var SlittingCalc = (function () {
   var EPS = 1e-9;
 
   var DEFAULTS = {
-    motherWidth: 1530, motherLength: 6000, widthStep: 5, maxSegments: 6,
+    motherWidth: 1650, motherLength: 6000, widthStep: 5, maxSegments: 6,
     autoWidth: false, autoWidthTol: 20, nest: true
   };
 
@@ -598,20 +597,19 @@ var SlittingCalc = (function () {
  * ========================================================================= */
 var I18N = {
   zh: {
-    'app.tagline': '在线分切优化器 · 输入订单规格与数量，自动生成最优分切方案',
+    'app.tagline': '在线分切计算器 · 输入订单规格与数量，自动生成最优分切方案',
     'app.motherRoll': '母卷规格',
     'step1.title': '输入订单规格与数量',
-    'step1.sub': '填写后点击下方按钮生成方案',
     'in.order': '订单号', 'in.model': '产品型号',
     'in.width': '需求宽度 (mm)', 'in.length': '需求长度 (M)', 'in.qty': '数量 (卷)',
     'in.phOrder': '订单号', 'in.phModel': '产品型号', 'in.phWidth': 'mm', 'in.phLength': 'M', 'in.phQty': '卷',
     'btn.addRow': '+ 添加一行', 'btn.sample': '载入示例', 'btn.clear': '清空',
-    'btn.calc': '生成最优分切方案', 'btn.recalc': '重新计算',
+    'btn.calc': '开始计算', 'btn.recalc': '重新计算',
     'btn.reenter': '重新输入',
     'btn.exportXls': '导出 Excel', 'btn.exportCsv': '导出 CSV', 'btn.print': '打印 / 存 PDF',
     'in.pasteHint': '提示：可直接从 Excel 复制多行（列顺序：订单号 / 产品型号 / 宽 / 长 / 卷数），在表格任意输入框按 Ctrl + V 批量粘贴；留空的行不参与计算。',
-    'empty.title': '请填写订单规格与数量，然后点击「生成最优分切方案」',
-    'stale': '订单内容已变更，请点击「重新计算」更新方案',
+    'empty.title': '请填写订单规格与数量，然后点击「开始计算」',
+    'stale': '订单内容已变更，请点击「开始计算」更新方案',
     'res.title': '优化方案',
     'res.sub': '根据母卷规格计算的最优生产规格、排刀与母卷用量',
 
@@ -665,20 +663,19 @@ var I18N = {
     'footer.rules': '计算原则：宽度向上取整至标准档位（略大于需求宽）｜长度按母卷长度整段取整｜同型号同规格合并数量后分配母卷｜同型号支持组合套切以最小化废料'
   },
   en: {
-    'app.tagline': 'Online slitting optimizer · Enter order specs and quantities to get the optimal slitting plan',
+    'app.tagline': 'Online slitting calculator · Enter order specs and quantities to get the optimal slitting plan',
     'app.motherRoll': 'Mother roll',
     'step1.title': 'Enter order specs & quantity',
-    'step1.sub': 'fill in, then generate the plan',
     'in.order': 'Order No.', 'in.model': 'Product',
     'in.width': 'Width (mm)', 'in.length': 'Length (M)', 'in.qty': 'Rolls',
     'in.phOrder': 'Order No.', 'in.phModel': 'Product', 'in.phWidth': 'mm', 'in.phLength': 'M', 'in.phQty': 'rolls',
     'btn.addRow': '+ Add row', 'btn.sample': 'Load sample', 'btn.clear': 'Clear',
-    'btn.calc': 'Generate Optimal Plan', 'btn.recalc': 'Recalculate',
+    'btn.calc': 'Start Calculation', 'btn.recalc': 'Recalculate',
     'btn.reenter': 'Re-enter Order',
     'btn.exportXls': 'Export Excel', 'btn.exportCsv': 'Export CSV', 'btn.print': 'Print / PDF',
     'in.pasteHint': 'Tip: copy multiple rows from Excel (columns: Order No. / Product / Width / Length / Rolls), then press Ctrl + V in any cell to paste in bulk. Blank rows are ignored.',
-    'empty.title': 'Enter the order specs and quantity, then click "Generate Optimal Plan"',
-    'stale': 'Order data changed — click "Recalculate" to refresh the plan',
+    'empty.title': 'Enter the order specs and quantity, then click "Start Calculation"',
+    'stale': 'Order data changed — click "Start Calculation" to refresh the plan',
     'res.title': 'Optimized Plan',
     'res.sub': 'Optimal production specs, slitting layout and mother-roll usage',
 

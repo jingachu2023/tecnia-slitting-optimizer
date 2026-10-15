@@ -1,7 +1,7 @@
 # Tecnia Online Slitting Optimizer
 
-在线分切优化器（Online Slitting Optimizer）：客户输入订单规格（宽 mm × 长 M × 卷数）与产品型号，
-基于母卷规格 **1530 mm × 6000 M** 自动计算最优分切方案。
+在线分切计算器（Online Slitting Calculator）：客户输入订单规格（宽 mm × 长 M × 卷数）与产品型号，
+基于母卷规格 **1650 mm × 6000 M**（可在「高级设置」中调整）自动计算最优分切方案。
 
 ## 功能
 
