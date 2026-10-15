@@ -287,10 +287,6 @@
         <span><b data-i18n="adv.nest"></b><em data-i18n="adv.nestDesc"></em></span>
       </label>
       <label class="switch">
-        <input type="checkbox" id="cfgCross" checked>
-        <span><b data-i18n="adv.cross"></b><em data-i18n="adv.crossDesc"></em></span>
-      </label>
-      <label class="switch">
         <input type="checkbox" id="cfgAutoW">
         <span><b data-i18n="adv.autoW"></b><em data-i18n="adv.autoWDesc"></em></span>
       </label>
@@ -317,7 +313,7 @@ var SlittingCalc = (function () {
 
   var DEFAULTS = {
     motherWidth: 1650, motherLength: 6000, widthStep: 5, maxSegments: 6,
-    autoWidth: false, autoWidthTol: 20, nest: true, crossModel: true
+    autoWidth: false, autoWidthTol: 20, nest: true
   };
 
   function R(x, d) { d = d === undefined ? 6 : d; var p = Math.pow(10, d); return Math.round(x * p) / p; }
@@ -534,17 +530,12 @@ var SlittingCalc = (function () {
       byModel[g.model].push(g);
     });
 
-    // 套切池：开启跨型号时全部规格合并为一个池；否则按型号分池
+    // 套切池：按「材料型号」分池——同一材料不同规格可套切；不同材料不混排
     var pools = [];
-    if (cfg.nest && cfg.crossModel && modelOrder.length > 1) {
-      pools.push({ model: '', cross: true,
-                   gs: groups.slice().sort(function (a, b) { return b.prodW - a.prodW; }) });
-    } else {
-      modelOrder.forEach(function (model) {
-        pools.push({ model: model, cross: false,
-                     gs: byModel[model].slice().sort(function (a, b) { return b.prodW - a.prodW; }) });
-      });
-    }
+    modelOrder.forEach(function (model) {
+      pools.push({ model: model, cross: false,
+                   gs: byModel[model].slice().sort(function (a, b) { return b.prodW - a.prodW; }) });
+    });
 
     var models = [];
     pools.forEach(function (pool) {
@@ -662,7 +653,7 @@ var I18N = {
     'th.metric': '指标', 'th.value': '数值', 'th.desc': '说明',
 
     'tag.same': '同上规格', 'tag.shared': '组合套切共享',
-    'plan.cross': '跨型号组合套切', 'plan.partial': '本组仅用 {l} M 母卷长',
+    'plan.partial': '本组仅用 {l} M 母卷长',
     'plan.nest': '组合套切（混排）', 'plan.simple': '逐规格独立分切',
     'plan.saved': '省 {n} 卷母卷', 'plan.mother': '母卷 {a} 卷', 'plan.motherCmp': '母卷 {a} 卷（独立分切需 {b} 卷）',
     'bar.edge': '边料',
@@ -696,7 +687,6 @@ var I18N = {
     'adv.mw': '母卷宽度（mm）', 'adv.ml': '母卷长度（M）', 'adv.step': '宽度标准档位（mm）',
     'adv.maxSeg': '长度方向最大分段数（刀）',
     'adv.nest': '同型号组合套切', 'adv.nestDesc': '同型号多规格混排，降低边料损耗',
-    'adv.cross': '跨型号组合套切', 'adv.crossDesc': '允许不同型号规格混排同一母卷，进一步省卷',
     'adv.autoW': '智能宽度微调', 'adv.autoWDesc': '在容差内选利用率更高的宽度档位',
     'adv.autoTol': '宽度微调上限（mm）',
     'footer.rules': '计算原则：宽度向上取整至标准档位（略大于需求宽）｜长度按母卷长度整段取整｜同型号同规格合并数量后分配母卷｜同型号支持组合套切以最小化废料'
@@ -732,7 +722,7 @@ var I18N = {
     'th.metric': 'Metric', 'th.value': 'Value', 'th.desc': 'Notes',
 
     'tag.same': 'same spec', 'tag.shared': 'shared in combined layout',
-    'plan.cross': 'Cross-product combined layout', 'plan.partial': 'uses only {l} M of roll length',
+    'plan.partial': 'uses only {l} M of roll length',
     'plan.nest': 'Combined layout', 'plan.simple': 'Dedicated layout per spec',
     'plan.saved': 'saves {n} mother rolls', 'plan.mother': '{a} mother rolls',
     'plan.motherCmp': '{a} mother rolls (dedicated mode needs {b})',
@@ -767,7 +757,6 @@ var I18N = {
     'adv.mw': 'Mother roll width (mm)', 'adv.ml': 'Mother roll length (M)', 'adv.step': 'Width step (mm)',
     'adv.maxSeg': 'Max length segments (cuts)',
     'adv.nest': 'Combined layout for same product', 'adv.nestDesc': 'Mix specs of one product to reduce edge waste',
-    'adv.cross': 'Cross-product nesting', 'adv.crossDesc': 'Allow specs of different products on one mother roll to save rolls',
     'adv.autoW': 'Smart width tuning', 'adv.autoWDesc': 'Pick the width step with the best utilization within tolerance',
     'adv.autoTol': 'Width tuning tolerance (mm)',
     'footer.rules': 'Rules: width rounded up to the standard step (slightly above requested) | length cut into whole segments of the mother roll | lines with the same product & spec are merged before allocating mother rolls | combined layout minimizes waste'
@@ -1018,7 +1007,7 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
 
     var body = '';
     res.models.forEach(function (p) {
-      body += '<tr class="model-head"><td colspan="5"><span>' + esc(p.cross ? t('plan.cross') : (p.model || '—')) + '</span>' +
+      body += '<tr class="model-head"><td colspan="5"><span>' + esc(p.model || '—') + '</span>' +
         '<span class="tag info" style="margin-left:10px">' + esc(t(p.mode === 'nest' ? 'plan.nest' : 'plan.simple')) + '</span>' +
         (p.mode === 'nest' ? '<span class="tag ok" style="margin-left:6px">' + esc(t('plan.saved', { n: p.saving })) + '</span>' : '') +
         '<span style="margin-left:10px;color:#64748b;font-weight:400">' +
@@ -1057,7 +1046,7 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
     var MW = res.config.motherWidth, rows = '', totalSlit = 0;
     res.models.forEach(function (p) {
       var inArea = p.chosen * (MW / 1000) * res.config.motherLength;
-      rows += '<tr class="model-head"><td colspan="6">' + esc(p.cross ? t('plan.cross') : (p.model || '—')) + '</td></tr>';
+      rows += '<tr class="model-head"><td colspan="6">' + esc(p.model || '—') + '</td></tr>';
       rows += '<tr><td>' + esc(t('sum.mill')) + '</td><td class="n">' + (MW / 1000).toFixed(3) + '</td>' +
         '<td class="n">' + trimNum(res.config.motherLength) + '</td><td class="n">' + trimNum(p.chosen) + '</td>' +
         '<td class="n">' + dec(inArea, 0) + '</td><td class="n">' + Math.ceil(p.chosen - 1e-9) + '</td></tr>';
@@ -1173,7 +1162,6 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
       if (isFinite(v) && v >= 0) { state.cfg.autoWidthTol = v; markStale(); }
     });
     el('cfgNest').addEventListener('change', function () { state.cfg.nest = this.checked; markStale(); });
-    el('cfgCross').addEventListener('change', function () { state.cfg.crossModel = this.checked; markStale(); });
     el('cfgAutoW').addEventListener('change', function () { state.cfg.autoWidth = this.checked; markStale(); });
 
     el('resultHost').addEventListener('click', function (e) {
@@ -1194,7 +1182,7 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
     rows.push([]);
     rows.push([t('th.item'), t('th.wm'), t('th.lm'), t('th.rolls'), t('th.sqm'), t('th.roll')]);
     res.models.forEach(function (p) {
-      rows.push([(p.cross ? t('plan.cross') : p.model) + '  [' + t(p.mode === 'nest' ? 'plan.nest' : 'plan.simple') + ']  ' + t('plan.mother', { a: trimNum(p.chosen) })]);
+      rows.push([p.model + '  [' + t(p.mode === 'nest' ? 'plan.nest' : 'plan.simple') + ']  ' + t('plan.mother', { a: trimNum(p.chosen) })]);
       rows.push([t('sum.mill'), (MW / 1000).toFixed(3), trimNum(res.config.motherLength), Math.ceil(p.chosen - 1e-9),
                  Math.round(p.chosen * (MW / 1000) * res.config.motherLength), Math.ceil(p.chosen - 1e-9)]);
       p.items.forEach(function (it, i) {
