@@ -287,6 +287,10 @@
         <span><b data-i18n="adv.nest"></b><em data-i18n="adv.nestDesc"></em></span>
       </label>
       <label class="switch">
+        <input type="checkbox" id="cfgCross" checked>
+        <span><b data-i18n="adv.cross"></b><em data-i18n="adv.crossDesc"></em></span>
+      </label>
+      <label class="switch">
         <input type="checkbox" id="cfgAutoW">
         <span><b data-i18n="adv.autoW"></b><em data-i18n="adv.autoWDesc"></em></span>
       </label>
@@ -313,7 +317,7 @@ var SlittingCalc = (function () {
 
   var DEFAULTS = {
     motherWidth: 1650, motherLength: 6000, widthStep: 5, maxSegments: 6,
-    autoWidth: false, autoWidthTol: 20, nest: true
+    autoWidth: false, autoWidthTol: 20, nest: true, crossModel: true
   };
 
   function R(x, d) { d = d === undefined ? 6 : d; var p = Math.pow(10, d); return Math.round(x * p) / p; }
@@ -442,13 +446,28 @@ var SlittingCalc = (function () {
       for (var z = 0; z < N; z++) used += counts[z];
       if (used <= 0) break;
 
-      var times = Infinity;
+      // times：宽度能整除的组合优先整段排布；
+      // 当各涉及项需求都不足 2 整段时，按需求比例部分取长（末卷剩余可他用），避免超产
+      var times = Infinity, partial = false, minFloor = Infinity, maxF = 0;
       for (var i = 0; i < N; i++) {
-        if (counts[i] > 0) times = Math.min(times, Math.floor(its[i].remain / (counts[i] * its[i].n)));
+        if (counts[i] > 0) {
+          var f = its[i].remain / (counts[i] * its[i].n);
+          if (f < minFloor) minFloor = Math.floor(f + EPS);
+          if (f > maxF) maxF = f;
+        }
       }
-      if (!isFinite(times) || times < 1) times = 1;
-      usage.push({ counts: counts.slice(), times: times });
-      for (i = 0; i < N; i++) its[i].remain -= counts[i] * its[i].n * times;
+      if (maxF > 0 && maxF < 2 - EPS) {
+        times = maxF; partial = true;
+      } else if (isFinite(minFloor) && minFloor >= 1) {
+        times = minFloor;
+      } else {
+        times = maxF; partial = true;
+      }
+      usage.push({ counts: counts.slice(), times: times, partial: partial });
+      for (i = 0; i < N; i++) {
+        its[i].remain -= counts[i] * its[i].n * times;
+        if (its[i].remain < EPS) its[i].remain = 0;
+      }
     }
 
     var merged = [];
@@ -456,7 +475,8 @@ var SlittingCalc = (function () {
       var k = u.counts.join(',');
       var f = null;
       for (var i = 0; i < merged.length; i++) if (merged[i].k === k) { f = merged[i]; break; }
-      if (f) f.times += u.times; else merged.push({ k: k, counts: u.counts.slice(), times: u.times });
+      if (f) { f.times += u.times; f.partial = f.partial || u.partial; }
+      else merged.push({ k: k, counts: u.counts.slice(), times: u.times, partial: u.partial });
     });
 
     var produced = its.map(function () { return 0; });
@@ -465,6 +485,7 @@ var SlittingCalc = (function () {
       rolls += u.times;
       for (var i = 0; i < N; i++) produced[i] += u.counts[i] * its[i].n * u.times;
     });
+    produced = produced.map(function (x) { return Math.round(x); });
 
     return {
       items: its.map(function (it) { return { key: it.key, groupKey: it.groupKey, Wp: it.Wp, n: it.n, need: it.need }; }),
@@ -513,11 +534,24 @@ var SlittingCalc = (function () {
       byModel[g.model].push(g);
     });
 
+    // 套切池：开启跨型号时全部规格合并为一个池；否则按型号分池
+    var pools = [];
+    if (cfg.nest && cfg.crossModel && modelOrder.length > 1) {
+      pools.push({ model: '', cross: true,
+                   gs: groups.slice().sort(function (a, b) { return b.prodW - a.prodW; }) });
+    } else {
+      modelOrder.forEach(function (model) {
+        pools.push({ model: model, cross: false,
+                     gs: byModel[model].slice().sort(function (a, b) { return b.prodW - a.prodW; }) });
+      });
+    }
+
     var models = [];
-    modelOrder.forEach(function (model) {
-      var gs = byModel[model].slice().sort(function (a, b) { return b.prodW - a.prodW; });
+    pools.forEach(function (pool) {
+      var model = pool.model;
+      var gs = pool.gs;
       var simpleRolls = gs.reduce(function (s, g) { return s + g.motherRolls; }, 0);
-      var plan = { model: model, groups: gs, simpleRolls: simpleRolls, chosen: simpleRolls,
+      var plan = { model: model, cross: pool.cross, groups: gs, simpleRolls: simpleRolls, chosen: simpleRolls,
                    mode: 'simple', patterns: [], items: [], produced: [], saving: 0 };
 
       var sameLen = gs.every(function (g) { return Math.abs(g.prodL - gs[0].prodL) < 1e-9; });
@@ -543,7 +577,7 @@ var SlittingCalc = (function () {
                 segs.push({ w: nst.items[i].Wp, c: u.counts[i], n: nst.items[i].n });
               }
             }
-            return { times: u.times, usedWidth: R(u2, 4), edge: R(MW - u2, 4), segs: segs };
+            return { times: u.times, partial: !!u.partial, usedWidth: R(u2, 4), edge: R(MW - u2, 4), segs: segs };
           });
         }
       }
@@ -562,18 +596,20 @@ var SlittingCalc = (function () {
       models.push(plan);
     });
 
-    var totals = { orderRolls: 0, motherRolls: 0, inputArea: 0, orderArea: 0, outputArea: 0,
-                   edgeArea: 0, overArea: 0, lossRate: 0, useRate: 0, effLoss: 0 };
+    var totals = { orderRolls: 0, motherRolls: 0, fracRolls: 0, inputArea: 0, orderArea: 0, outputArea: 0,
+                   edgeArea: 0, overArea: 0, lossRate: 0, useRate: 0, effLoss: 0, unusedArea: 0 };
     lines.forEach(function (l) {
       if (!l.ok) return;
       totals.orderRolls += l.qty;
       totals.orderArea += (l.reqW / 1000) * l.reqL * l.qty;
     });
     models.forEach(function (p) {
-      totals.motherRolls += p.chosen;
+      totals.fracRolls += p.chosen;
       p.patterns.forEach(function (pt) { totals.outputArea += pt.times * (pt.usedWidth / 1000) * ML; });
     });
-    totals.inputArea = totals.motherRolls * (MW / 1000) * ML;
+    totals.motherRolls = Math.ceil(totals.fracRolls - EPS); // 采购按整卷计
+    totals.inputArea = totals.fracRolls * (MW / 1000) * ML; // 实际耗用面积
+    totals.unusedArea = Math.max(0, (totals.motherRolls - totals.fracRolls)) * (MW / 1000) * ML; // 末卷未用部分，可他用
     totals.edgeArea = Math.max(0, totals.inputArea - totals.outputArea);
     totals.overArea = Math.max(0, totals.outputArea - totals.orderArea);
     totals.lossRate = totals.inputArea > 0 ? (totals.inputArea - totals.orderArea) / totals.inputArea : 0;
@@ -626,6 +662,7 @@ var I18N = {
     'th.metric': '指标', 'th.value': '数值', 'th.desc': '说明',
 
     'tag.same': '同上规格', 'tag.shared': '组合套切共享',
+    'plan.cross': '跨型号组合套切', 'plan.partial': '本组仅用 {l} M 母卷长',
     'plan.nest': '组合套切（混排）', 'plan.simple': '逐规格独立分切',
     'plan.saved': '省 {n} 卷母卷', 'plan.mother': '母卷 {a} 卷', 'plan.motherCmp': '母卷 {a} 卷（独立分切需 {b} 卷）',
     'bar.edge': '边料',
@@ -642,6 +679,7 @@ var I18N = {
     'loss.edge': '边料废料', 'loss.edgeD': '宽度方向切余，不可回收',
     'loss.over': '超产余量', 'loss.overD': '为满足整数卷而多产出的成品，可入库',
     'loss.total': '综合损耗率', 'loss.totalD': '（母卷投入 − 订单需求）÷ 母卷投入',
+    'loss.unused': '末卷剩余未用', 'loss.unusedD': '最后一卷母卷按需部分取长，剩余长度可另作他用',
     'loss.use': '材料利用率', 'loss.useD': '订单需求面积 ÷ 母卷投入面积',
     'msg.errTitle': '无法分切', 'msg.noteTitle': '规格已调整', 'msg.row': '第 {n} 行',
 
@@ -658,6 +696,7 @@ var I18N = {
     'adv.mw': '母卷宽度（mm）', 'adv.ml': '母卷长度（M）', 'adv.step': '宽度标准档位（mm）',
     'adv.maxSeg': '长度方向最大分段数（刀）',
     'adv.nest': '同型号组合套切', 'adv.nestDesc': '同型号多规格混排，降低边料损耗',
+    'adv.cross': '跨型号组合套切', 'adv.crossDesc': '允许不同型号规格混排同一母卷，进一步省卷',
     'adv.autoW': '智能宽度微调', 'adv.autoWDesc': '在容差内选利用率更高的宽度档位',
     'adv.autoTol': '宽度微调上限（mm）',
     'footer.rules': '计算原则：宽度向上取整至标准档位（略大于需求宽）｜长度按母卷长度整段取整｜同型号同规格合并数量后分配母卷｜同型号支持组合套切以最小化废料'
@@ -693,6 +732,7 @@ var I18N = {
     'th.metric': 'Metric', 'th.value': 'Value', 'th.desc': 'Notes',
 
     'tag.same': 'same spec', 'tag.shared': 'shared in combined layout',
+    'plan.cross': 'Cross-product combined layout', 'plan.partial': 'uses only {l} M of roll length',
     'plan.nest': 'Combined layout', 'plan.simple': 'Dedicated layout per spec',
     'plan.saved': 'saves {n} mother rolls', 'plan.mother': '{a} mother rolls',
     'plan.motherCmp': '{a} mother rolls (dedicated mode needs {b})',
@@ -710,6 +750,7 @@ var I18N = {
     'loss.edge': 'Edge waste', 'loss.edgeD': 'Trimmed off across the width — not recoverable',
     'loss.over': 'Overproduction', 'loss.overD': 'Extra finished rolls from rounding up — can be stocked',
     'loss.total': 'Overall loss rate', 'loss.totalD': '(mother-roll input − order requirement) ÷ mother-roll input',
+    'loss.unused': 'Unused roll remainder', 'loss.unusedD': 'Last mother roll used partially by demand — the rest stays reusable',
     'loss.use': 'Material yield', 'loss.useD': 'Order requirement ÷ mother-roll input',
     'msg.errTitle': 'Cannot be slit', 'msg.noteTitle': 'Specs adjusted', 'msg.row': 'Row {n}',
 
@@ -726,6 +767,7 @@ var I18N = {
     'adv.mw': 'Mother roll width (mm)', 'adv.ml': 'Mother roll length (M)', 'adv.step': 'Width step (mm)',
     'adv.maxSeg': 'Max length segments (cuts)',
     'adv.nest': 'Combined layout for same product', 'adv.nestDesc': 'Mix specs of one product to reduce edge waste',
+    'adv.cross': 'Cross-product nesting', 'adv.crossDesc': 'Allow specs of different products on one mother roll to save rolls',
     'adv.autoW': 'Smart width tuning', 'adv.autoWDesc': 'Pick the width step with the best utilization within tolerance',
     'adv.autoTol': 'Width tuning tolerance (mm)',
     'footer.rules': 'Rules: width rounded up to the standard step (slightly above requested) | length cut into whole segments of the mother roll | lines with the same product & spec are merged before allocating mother rolls | combined layout minimizes waste'
@@ -912,11 +954,14 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
       }
       var g = res.groups.filter(function (x) { return x.key === l.groupKey; })[0];
       var sameAsPrev = i > 0 && res.lines[i - 1].ok && res.lines[i - 1].groupKey === l.groupKey;
-      var plan = res.models.filter(function (p) { return p.model === l.modelKey; })[0];
+      var plan = null;
+      for (var pi = 0; pi < res.models.length; pi++) {
+        if (res.models[pi].groups.some(function (gg) { return gg.key === l.groupKey; })) { plan = res.models[pi]; break; }
+      }
       var mr;
       if (plan && plan.mode === 'nest') {
         mr = (lastModel === l.modelKey) ? '<span style="color:#cbd5e1">〃</span>'
-          : '<span class="tag gray">' + esc(t('tag.shared')) + ' · ' + plan.chosen + '</span>';
+          : '<span class="tag gray">' + esc(t('tag.shared')) + ' · ' + trimNum(plan.chosen) + '</span>';
       } else if (g) {
         mr = (lastModel === l.modelKey && sameAsPrev) ? '<span style="color:#cbd5e1">〃</span>' : int(g.motherRolls);
       } else { mr = '—'; }
@@ -973,11 +1018,11 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
 
     var body = '';
     res.models.forEach(function (p) {
-      body += '<tr class="model-head"><td colspan="5"><span>' + esc(p.model || '—') + '</span>' +
+      body += '<tr class="model-head"><td colspan="5"><span>' + esc(p.cross ? t('plan.cross') : (p.model || '—')) + '</span>' +
         '<span class="tag info" style="margin-left:10px">' + esc(t(p.mode === 'nest' ? 'plan.nest' : 'plan.simple')) + '</span>' +
         (p.mode === 'nest' ? '<span class="tag ok" style="margin-left:6px">' + esc(t('plan.saved', { n: p.saving })) + '</span>' : '') +
         '<span style="margin-left:10px;color:#64748b;font-weight:400">' +
-          esc(p.mode === 'nest' ? t('plan.motherCmp', { a: p.chosen, b: p.simpleRolls }) : t('plan.mother', { a: p.chosen })) +
+          esc(p.mode === 'nest' ? t('plan.motherCmp', { a: trimNum(p.chosen), b: p.simpleRolls }) : t('plan.mother', { a: trimNum(p.chosen) })) +
         '</span></td></tr>';
 
       p.patterns.forEach(function (pt) {
@@ -985,12 +1030,15 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
         var lenTxt = pt.segs.length
           ? trimNum(res.config.motherLength / pt.segs[0].n) + ' M <span style="color:#94a3b8">·</span> ' + pt.segs[0].n
           : '';
+        if (pt.partial) {
+          lenTxt += ' <span class="tag warn">' + esc(t('plan.partial', { l: trimNum(pt.times * res.config.motherLength) })) + '</span>';
+        }
         body += '<tr>' +
           '<td style="min-width:290px">' + slitBar(pt.segs, MW, colorMap) + '</td>' +
           '<td style="white-space:nowrap">' + esc(combo) + '</td>' +
           '<td style="white-space:nowrap">' + lenTxt + '</td>' +
           '<td class="n">' + trimNum(pt.usedWidth) + '<span style="color:#94a3b8"> / </span>' + trimNum(pt.edge) + ' mm</td>' +
-          '<td class="n">' + pt.times + ' · ' + pc(pt.usedWidth / MW, 1) + '</td>' +
+          '<td class="n">' + trimNum(pt.times) + ' · ' + pc(pt.usedWidth / MW, 1) + '</td>' +
           '</tr>';
       });
     });
@@ -1009,10 +1057,10 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
     var MW = res.config.motherWidth, rows = '', totalSlit = 0;
     res.models.forEach(function (p) {
       var inArea = p.chosen * (MW / 1000) * res.config.motherLength;
-      rows += '<tr class="model-head"><td colspan="6">' + esc(p.model || '—') + '</td></tr>';
+      rows += '<tr class="model-head"><td colspan="6">' + esc(p.cross ? t('plan.cross') : (p.model || '—')) + '</td></tr>';
       rows += '<tr><td>' + esc(t('sum.mill')) + '</td><td class="n">' + (MW / 1000).toFixed(3) + '</td>' +
-        '<td class="n">' + trimNum(res.config.motherLength) + '</td><td class="n">' + p.chosen + '</td>' +
-        '<td class="n">' + dec(inArea, 0) + '</td><td class="n">' + p.chosen + '</td></tr>';
+        '<td class="n">' + trimNum(res.config.motherLength) + '</td><td class="n">' + trimNum(p.chosen) + '</td>' +
+        '<td class="n">' + dec(inArea, 0) + '</td><td class="n">' + Math.ceil(p.chosen - 1e-9) + '</td></tr>';
       p.items.forEach(function (it, i) {
         var rolls = p.produced[i];
         totalSlit += rolls;
@@ -1051,6 +1099,7 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
       L(esc(t('loss.output')), dec(x.outputArea, 0) + ' ' + t('u.sqm'), esc(t('loss.outputD'))) +
       L(esc(t('loss.edge')), dec(x.edgeArea, 0) + ' ' + t('u.sqm') + ' · ' + pc(x.effLoss, 2), esc(t('loss.edgeD'))) +
       L(esc(t('loss.over')), dec(x.overArea, 0) + ' ' + t('u.sqm') + ' · ' + pc(x.inputArea ? x.overArea / x.inputArea : 0, 2), esc(t('loss.overD'))) +
+      (x.unusedArea > 0.5 ? L(esc(t('loss.unused')), dec(x.unusedArea, 0) + ' ' + t('u.sqm'), esc(t('loss.unusedD'))) : '') +
       L('<b>' + esc(t('loss.total')) + '</b>', '<b>' + pc(x.lossRate, 2) + '</b>', esc(t('loss.totalD'))) +
       L('<b>' + esc(t('loss.use')) + '</b>', '<b>' + pc(x.useRate, 2) + '</b>', esc(t('loss.useD'))) +
       '</tbody></table></div></div>';
@@ -1124,6 +1173,7 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
       if (isFinite(v) && v >= 0) { state.cfg.autoWidthTol = v; markStale(); }
     });
     el('cfgNest').addEventListener('change', function () { state.cfg.nest = this.checked; markStale(); });
+    el('cfgCross').addEventListener('change', function () { state.cfg.crossModel = this.checked; markStale(); });
     el('cfgAutoW').addEventListener('change', function () { state.cfg.autoWidth = this.checked; markStale(); });
 
     el('resultHost').addEventListener('click', function (e) {
@@ -1144,9 +1194,9 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
     rows.push([]);
     rows.push([t('th.item'), t('th.wm'), t('th.lm'), t('th.rolls'), t('th.sqm'), t('th.roll')]);
     res.models.forEach(function (p) {
-      rows.push([p.model + '  [' + t(p.mode === 'nest' ? 'plan.nest' : 'plan.simple') + ']  ' + t('plan.mother', { a: p.chosen })]);
-      rows.push([t('sum.mill'), (MW / 1000).toFixed(3), trimNum(res.config.motherLength), p.chosen,
-                 Math.round(p.chosen * (MW / 1000) * res.config.motherLength), p.chosen]);
+      rows.push([(p.cross ? t('plan.cross') : p.model) + '  [' + t(p.mode === 'nest' ? 'plan.nest' : 'plan.simple') + ']  ' + t('plan.mother', { a: trimNum(p.chosen) })]);
+      rows.push([t('sum.mill'), (MW / 1000).toFixed(3), trimNum(res.config.motherLength), Math.ceil(p.chosen - 1e-9),
+                 Math.round(p.chosen * (MW / 1000) * res.config.motherLength), Math.ceil(p.chosen - 1e-9)]);
       p.items.forEach(function (it, i) {
         rows.push([t('sum.slit'), (it.Wp / 1000).toFixed(3), trimNum(res.config.motherLength / it.n),
                    p.produced[i], Math.round((it.Wp / 1000) * (res.config.motherLength / it.n) * p.produced[i]), p.produced[i]]);
