@@ -394,28 +394,50 @@ var SlittingCalc = (function () {
   }
 
   /* ---------- 同型号组合套切 ---------- */
-  function bestPattern(its, MWu, SCALE, memo, choice, N) {
+  /* DP 求单卷最优排刀：
+     主目标：已用宽度最大（零边料/整除优先）；
+     次目标：同宽组合中，最大化「最小覆盖进度」min(c_i·n_i / remain_i)，
+     即各 involved 规格的产出与剩余需求比例最协调，避免某规格提前切完
+     留下难排刀的零头；同宽同进度时按 c 从大到小（宽规格整除优先）。 */
+  function bestPattern(its, MWu, SCALE, N) {
+    var W = MWu + 1;
+    var memoW = new Float64Array((N + 1) * W).fill(-1);
+    var memoR = new Float64Array((N + 1) * W).fill(-Infinity);
+    var choice = new Int32Array((N + 1) * W);
     function solve(i, rem) {
       if (i === N) return 0;
-      var key = i * (MWu + 1) + rem;
-      if (memo[key] >= 0) return memo[key];
-      var w = Math.max(1, Math.round(its[i].Wp * SCALE));
-      var mx = Math.min(its[i]._cap, Math.floor(rem / w));
-      var best = 0, bestC = 0;
+      var key = i * W + rem;
+      if (memoW[key] >= 0) return memoW[key];
+      var wu = Math.max(1, Math.round(its[i].Wp * SCALE));
+      var mx = Math.min(its[i]._cap, Math.floor(rem / wu));
+      var bestW = 0, bestR = -Infinity, bestC = 0;
       for (var c = mx; c >= 0; c--) {
-        var v = c * w + solve(i + 1, rem - c * w);
-        if (v > best) { best = v; bestC = c; }
+        var rem2 = rem - c * wu;
+        var sw = solve(i + 1, rem2);
+        var v = c * wu + sw;
+        var r;
+        if (v <= EPS) {
+          r = -Infinity; // 空组合不参与比较
+        } else if (c > 0) {
+          r = c * its[i]._rr;
+          var sr = memoR[(i + 1) * W + rem2];
+          if (sr > r) r = sr; // 与后缀取 min（后缀空时 sr=-Inf 不约束）
+        } else {
+          r = memoR[(i + 1) * W + rem2];
+        }
+        if (v > bestW + EPS || (v > EPS && Math.abs(v - bestW) <= EPS && r > bestR + 1e-12)) {
+          bestW = v; bestR = r; bestC = c;
+        }
       }
-      memo[key] = best; choice[key] = bestC;
-      return best;
+      memoW[key] = bestW; memoR[key] = bestR; choice[key] = bestC;
+      return bestW;
     }
     solve(0, MWu);
     var counts = new Array(N).fill(0), rem = MWu;
     for (var i = 0; i < N; i++) {
-      var key = i * (MWu + 1) + rem;
-      var c = choice[key] || 0;
+      var c = choice[i * W + rem] || 0;
       counts[i] = c;
-      rem -= c * Math.max(1, Math.round(its[i].Wp * SCALE));
+      if (c > 0) rem -= c * Math.max(1, Math.round(its[i].Wp * SCALE));
     }
     return counts;
   }
@@ -424,44 +446,100 @@ var SlittingCalc = (function () {
     var N = items.length;
     if (N < 2) return null;
     var SCALE = 10, MWu = Math.round(MW * SCALE);
-    var its = items.map(function (it) {
-      return { key: it.key, groupKey: it.groupKey, Wp: it.Wp, n: it.n, need: it.need, remain: it.need, _cap: 0 };
-    });
-    var usage = [], guard = 0;
 
-    while (its.some(function (it) { return it.remain > 0; }) && guard++ < 4000) {
-      its.forEach(function (it) {
-        var byWidth = Math.floor(MW / it.Wp + EPS);
-        var byNeed = it.remain > 0 ? Math.max(1, Math.ceil(it.remain / it.n)) : 0;
-        it._cap = Math.max(0, Math.min(byWidth, byNeed));
+    function makeState(remain) {
+      return items.map(function (it, i) {
+        return { key: it.key, groupKey: it.groupKey, Wp: it.Wp, n: it.n,
+                 remain: remain[i], _cap: 0, _rr: 0 };
       });
-      var memo = new Float64Array((N + 1) * (MWu + 1)).fill(-1);
-      var choice = new Int32Array((N + 1) * (MWu + 1));
-      var counts = bestPattern(its, MWu, SCALE, memo, choice, N);
-      var used = 0;
-      for (var z = 0; z < N; z++) used += counts[z];
-      if (used <= 0) break;
-
-      // times：宽度能整除的组合优先整段排布；
-      // 当各涉及项需求都不足 2 整段时，按需求比例部分取长（末卷剩余可他用），避免超产
-      var times = Infinity, partial = false, minFloor = Infinity, maxF = 0;
-      for (var i = 0; i < N; i++) {
+    }
+    function applyCaps(st) {
+      st.forEach(function (it) {
+        it._cap = it.remain > EPS ? Math.floor(MW / it.Wp + EPS) : 0; // 只受宽度限制；长度由 times 规则控制
+        it._rr = it.n / Math.max(1e-9, it.remain); // 覆盖进度系数
+      });
+    }
+    // times = 各 involved 规格「覆盖进度」f_i = remain_i/(c_i·n_i) 的最小值；
+    // ≥1 时取整数部分（整段排布），<1 时按该比例部分取长（末卷剩余可他用）。
+    // t ≤ 所有 f_i ⇒ 任何规格都不会被过量生产。
+    function timesFor(st, counts) {
+      var minF = Infinity;
+      for (var i = 0; i < st.length; i++) {
         if (counts[i] > 0) {
-          var f = its[i].remain / (counts[i] * its[i].n);
-          if (f < minFloor) minFloor = Math.floor(f + EPS);
-          if (f > maxF) maxF = f;
+          var f = st[i].remain / (counts[i] * st[i].n);
+          if (f < minF) minF = f;
         }
       }
-      if (maxF > 0 && maxF < 2 - EPS) {
-        times = maxF; partial = true;
-      } else if (isFinite(minFloor) && minFloor >= 1) {
-        times = minFloor;
-      } else {
-        times = maxF; partial = true;
+      if (!isFinite(minF) || minF <= EPS) return null;
+      if (minF >= 1 - EPS) return { t: Math.floor(minF + EPS), partial: false };
+      return { t: minF, partial: true };
+    }
+    // 普通贪婪（无前瞻）：模拟到结束，返回总卷数
+    function simTotal(remain0) {
+      var sim = makeState(remain0), rolls = 0, g = 0;
+      while (sim.some(function (s) { return s.remain > EPS; }) && g++ < 2000) {
+        applyCaps(sim);
+        var counts = bestPattern(sim, MWu, SCALE, N);
+        var ti = timesFor(sim, counts);
+        if (!ti) break;
+        rolls += ti.t;
+        for (var i = 0; i < N; i++) {
+          sim[i].remain -= counts[i] * sim[i].n * ti.t;
+          if (sim[i].remain < EPS) sim[i].remain = 0;
+        }
       }
-      usage.push({ counts: counts.slice(), times: times, partial: partial });
-      for (i = 0; i < N; i++) {
-        its[i].remain -= counts[i] * its[i].n * times;
+      return rolls;
+    }
+    // 带前瞻的选组合：P0 + 若干强制某规格条数的候选，逐一模拟到结束取总卷数最小者
+    function choose(st) {
+      applyCaps(st);
+      var cands = [], seen = {};
+      function add(counts) {
+        if (!counts) return;
+        var used = 0;
+        for (var i = 0; i < N; i++) used += counts[i];
+        if (used <= 0) return;
+        var k = counts.join(',');
+        if (!seen[k]) { seen[k] = 1; cands.push(counts); }
+      }
+      add(bestPattern(st, MWu, SCALE, N));
+      if (N <= 8) { // 候选：对每个规格强制 1 条 / 按需求比例 / 满宽上限，再由 DP 补排其余
+        var dSum = 0;
+        st.forEach(function (it) { if (it.remain > EPS) dSum += it.remain / it.n; });
+        for (var j = 0; j < N && cands.length < 10; j++) {
+          if (st[j]._cap < 1 || !(st[j].remain > EPS)) continue;
+          var props = [1, Math.min(st[j]._cap, Math.max(1, Math.round(st[j]._cap * (st[j].remain / st[j].n) / (dSum || 1)))), st[j]._cap];
+          for (var p = 0; p < props.length; p++) {
+            var c0 = Math.min(st[j]._cap, Math.max(0, props[p]));
+            var saved = st[j]._cap;
+            st[j]._cap = c0;
+            add(bestPattern(st, MWu, SCALE, N));
+            st[j]._cap = saved;
+          }
+        }
+      }
+      var best = null, bestScore = Infinity;
+      for (var ci = 0; ci < cands.length; ci++) {
+        var counts = cands[ci];
+        var ti = timesFor(st, counts);
+        if (!ti) continue;
+        var rem2 = st.map(function (it, i) {
+          return Math.max(0, it.remain - counts[i] * it.n * ti.t);
+        });
+        var score = ti.t + simTotal(rem2);
+        if (score < bestScore - 1e-9) { bestScore = score; best = { counts: counts, ti: ti }; }
+      }
+      return best;
+    }
+
+    var its = makeState(items.map(function (it) { return it.need; }));
+    var usage = [], guard = 0;
+    while (its.some(function (it) { return it.remain > EPS; }) && guard++ < 400) {
+      var choice = choose(its);
+      if (!choice) break;
+      usage.push({ counts: choice.counts, times: choice.ti.t, partial: choice.ti.partial });
+      for (var i = 0; i < N; i++) {
+        its[i].remain -= choice.counts[i] * its[i].n * choice.ti.t;
         if (its[i].remain < EPS) its[i].remain = 0;
       }
     }
