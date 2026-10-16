@@ -40,11 +40,6 @@
   .brand h1{margin:0;font-size:23px;line-height:1.25;font-weight:700;letter-spacing:.2px}
   .brand p{margin:4px 0 0;font-size:12.5px;color:rgba(255,255,255,.82)}
   .topright{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  .mother-badge{
-    background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:10px;
-    padding:8px 14px;font-size:12.5px;color:rgba(255,255,255,.85);white-space:nowrap;
-  }
-  .mother-badge strong{color:#fff;font-size:14px;letter-spacing:.4px;display:block;margin-top:1px}
   .lang{display:flex;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:9px;overflow:hidden}
   .lang button{
     font:inherit;font-size:12.5px;border:none;background:transparent;color:rgba(255,255,255,.8);
@@ -197,8 +192,6 @@
     .no-print{display:none !important}
     .card,.kpi,.topbar,details.adv{box-shadow:none;break-inside:avoid}
     .topbar{background:#fff;color:#111;border:1px solid #cbd5e1}
-    .topbar .mother-badge{color:#333;border-color:#cbd5e1;background:#f8fafc}
-    .topbar .mother-badge strong{color:#111}
     .brand p{color:#555}
     .wrap{max-width:none;padding:0}
   }
@@ -224,10 +217,6 @@
       <div class="lang no-print">
         <button type="button" data-lang="zh">中文</button>
         <button type="button" data-lang="en">EN</button>
-      </div>
-      <div class="mother-badge">
-        <span data-i18n="app.motherRoll"></span>
-        <strong id="motherBadge">1650 mm × 6000 M</strong>
       </div>
     </div>
   </div>
@@ -767,7 +756,7 @@ var I18N = {
     'th.metric': '指标', 'th.value': '数值', 'th.desc': '说明',
 
     'tag.same': '同上规格', 'tag.shared': '组合套切共享',
-    'plan.partial': '本组仅用 {l} M 母卷长',
+    'plan.partial': '末卷按需部分取长，仅用 {l} M（剩余母卷长可移作他用）',
     'plan.nest': '组合套切（混排）', 'plan.simple': '逐规格独立分切',
     'plan.saved': '省 {n} 卷母卷', 'plan.mother': '母卷 {a} 卷', 'plan.motherCmp': '母卷 {a} 卷（独立分切需 {b} 卷）',
     'bar.edge': '边料',
@@ -839,7 +828,7 @@ var I18N = {
     'th.metric': 'Metric', 'th.value': 'Value', 'th.desc': 'Notes',
 
     'tag.same': 'same spec', 'tag.shared': 'shared in combined layout',
-    'plan.partial': 'uses only {l} M of roll length',
+    'plan.partial': 'last roll cut to need: only {l} M used (remainder reusable)',
     'plan.nest': 'Combined layout', 'plan.simple': 'Dedicated layout per spec',
     'plan.saved': 'saves {n} mother rolls', 'plan.mother': '{a} mother rolls',
     'plan.motherCmp': '{a} mother rolls (dedicated mode needs {b})',
@@ -969,7 +958,6 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
     for (var i = 0; i < state.rows.length; i++) if (state.rows[i].id === id) { state.rows[i][k] = v; return; }
   }
   function updateBadge() {
-    el('motherBadge').textContent = trimNum(state.cfg.motherWidth) + ' mm × ' + trimNum(state.cfg.motherLength) + ' M';
   }
 
   /* ---------------- 计算与渲染 ---------------- */
@@ -1150,7 +1138,7 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
         if (pt.partial) {
           var frac = pt.times - Math.floor(pt.times);
           var usedLen = (frac > 1e-9 ? frac : pt.times) * res.config.motherLength;
-          lenTxt += ' <span class="tag warn">' + esc(t('plan.partial', { l: trimNum(usedLen) })) + '</span>';
+          lenTxt += ' <span class="tag info">' + esc(t('plan.partial', { l: trimNum(usedLen) })) + '</span>';
         }
         body += '<tr>' +
           '<td style="min-width:290px">' + slitBar(pt.segs, MW, colorMap) + '</td>' +
