@@ -124,6 +124,11 @@
     background:#fff;color:var(--text);
   }
   .field input[type=number]:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(22,104,220,.12)}
+  .field select{
+    font:inherit;font-size:14px;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:9px;
+    background:#fff;color:var(--text);cursor:pointer;
+  }
+  .field select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(22,104,220,.12)}
   .switch{display:flex;align-items:flex-start;gap:9px;font-size:13px;cursor:pointer;padding-top:2px}
   .switch input{margin-top:2px;width:15px;height:15px;accent-color:var(--primary);flex:none}
   .switch b{font-weight:600;display:block}
@@ -254,6 +259,30 @@
       </table>
     </div>
     <p class="hint" data-i18n="in.pasteHint"></p>
+  </section>
+
+  <!-- ② 选择母卷规格 -->
+  <section class="card no-print">
+    <div class="card-head">
+      <h2><span class="num">2</span><span data-i18n="step2.title"></span></h2>
+    </div>
+    <div class="cfg-grid" style="padding:16px 18px">
+      <div class="field">
+        <label data-i18n="step2.mw"></label>
+        <select id="selMW">
+          <option value="1650" selected>1650 mm</option>
+          <option value="1530">1530 mm</option>
+          <option value="1080">1080 mm</option>
+        </select>
+      </div>
+      <div class="field">
+        <label data-i18n="step2.ml"></label>
+        <select id="selML">
+          <option value="6000" selected>6000 M</option>
+          <option value="3000">3000 M</option>
+        </select>
+      </div>
+    </div>
     <div class="cta-bar">
       <button type="button" class="btn-cta" id="btnCalc"><span id="btnCalcLabel" data-i18n="btn.calc"></span><span aria-hidden="true">→</span></button>
     </div>
@@ -266,14 +295,6 @@
   <details class="adv no-print" id="advBox">
     <summary><span data-i18n="adv.title"></span><span class="caret">▾</span></summary>
     <div class="cfg-grid">
-      <div class="field">
-        <label data-i18n="adv.mw"></label>
-        <input type="number" id="cfgMW" value="1650" min="1" step="1">
-      </div>
-      <div class="field">
-        <label data-i18n="adv.ml"></label>
-        <input type="number" id="cfgML" value="6000" min="1" step="1">
-      </div>
       <div class="field">
         <label data-i18n="adv.step"></label>
         <input type="number" id="cfgStep" value="5" min="0.1" step="0.5">
@@ -474,24 +495,31 @@ var SlittingCalc = (function () {
       if (minF >= 1 - EPS) return { t: Math.floor(minF + EPS), partial: false };
       return { t: minF, partial: true };
     }
-    // 普通贪婪（无前瞻）：模拟到结束，返回总卷数
-    function simTotal(remain0) {
-      var sim = makeState(remain0), rolls = 0, g = 0;
+    // 普通贪婪（无前瞻）：模拟到结束，返回 { 总卷数, 排刀方案种类数 }；firstCounts 为首步强制组合
+    function simTotal(remain0, usedTypes, firstCounts) {
+      var sim = makeState(remain0), rolls = 0, g = 0, types = 0;
+      var seen = {};
+      if (usedTypes) for (var k in usedTypes) { seen[k] = 1; types++; }
+      var first = firstCounts || null;
       while (sim.some(function (s) { return s.remain > EPS; }) && g++ < 2000) {
-        applyCaps(sim);
-        var counts = bestPattern(sim, MWu, SCALE, N);
+        var counts;
+        if (first) { counts = first; first = null; }
+        else { applyCaps(sim); counts = bestPattern(sim, MWu, SCALE, N); }
         var ti = timesFor(sim, counts);
         if (!ti) break;
         rolls += ti.t;
+        var k = counts.join(',');
+        if (!seen[k]) { seen[k] = 1; types++; }
         for (var i = 0; i < N; i++) {
           sim[i].remain -= counts[i] * sim[i].n * ti.t;
           if (sim[i].remain < EPS) sim[i].remain = 0;
         }
       }
-      return rolls;
+      return { rolls: rolls, types: types };
     }
-    // 带前瞻的选组合：P0 + 若干强制某规格条数的候选，逐一模拟到结束取总卷数最小者
-    function choose(st) {
+    // 带前瞻的选组合：P0 + 若干强制某规格条数的候选，逐一模拟到结束；
+    // 评分（按用户优先级）：① 总耗用母卷卷数最少 ② 排刀方案（换刀）种类最少
+    function choose(st, usedTypes) {
       applyCaps(st);
       var cands = [], seen = {};
       function add(counts) {
@@ -518,7 +546,7 @@ var SlittingCalc = (function () {
           }
         }
       }
-      var best = null, bestScore = Infinity;
+      var best = null, bestRolls = Infinity, bestTypes = Infinity;
       for (var ci = 0; ci < cands.length; ci++) {
         var counts = cands[ci];
         var ti = timesFor(st, counts);
@@ -526,17 +554,23 @@ var SlittingCalc = (function () {
         var rem2 = st.map(function (it, i) {
           return Math.max(0, it.remain - counts[i] * it.n * ti.t);
         });
-        var score = ti.t + simTotal(rem2);
-        if (score < bestScore - 1e-9) { bestScore = score; best = { counts: counts, ti: ti }; }
+        var sim = simTotal(rem2, usedTypes, counts);
+        var sRolls = ti.t + sim.rolls;
+        if (sRolls < bestRolls - 1e-9 ||
+            (Math.abs(sRolls - bestRolls) <= 1e-9 && sim.types < bestTypes - 1e-9)) {
+          bestRolls = sRolls; bestTypes = sim.types; best = { counts: counts, ti: ti };
+        }
       }
       return best;
     }
 
     var its = makeState(items.map(function (it) { return it.need; }));
-    var usage = [], guard = 0;
+    var usage = [], guard = 0, usedTypes = {};
     while (its.some(function (it) { return it.remain > EPS; }) && guard++ < 400) {
-      var choice = choose(its);
+      var choice = choose(its, usedTypes);
       if (!choice) break;
+      var kC = choice.counts.join(',');
+      usedTypes[kC] = 1;
       usage.push({ counts: choice.counts, times: choice.ti.t, partial: choice.ti.partial });
       for (var i = 0; i < N; i++) {
         its[i].remain -= choice.counts[i] * its[i].n * choice.ti.t;
@@ -633,7 +667,9 @@ var SlittingCalc = (function () {
 
       if (cfg.nest && sameLen && rawItems.length >= 2 && rawItems.length <= 12) {
         var nst = nestSolve(rawItems, MW);
-        if (nst && nst.motherRolls < simpleRolls) {
+        // 优先级：① 母卷耗用少 ② 母卷耗用相同时排刀方案（换刀）种类少
+        if (nst && (nst.motherRolls < simpleRolls - EPS ||
+                    (Math.abs(nst.motherRolls - simpleRolls) <= EPS && nst.patterns.length < gs.length))) {
           plan.mode = 'nest';
           plan.chosen = nst.motherRolls;
           plan.saving = simpleRolls - nst.motherRolls;
@@ -725,7 +761,7 @@ var I18N = {
 
     'th.no': '#', 'th.order': '订单号', 'th.model': '产品型号', 'th.req': '需求规格', 'th.qty': '卷数',
     'th.opt': '优化规格', 'th.cut': '排刀', 'th.cap': '产能', 'th.mr': '母卷用量', 'th.note': '调整说明',
-    'th.bar': '排刀示意（母卷 {w}mm 展开）', 'th.combo': '分条组合', 'th.len': '成品长度·长度刀数',
+    'th.bar': '排刀示意（母卷 {w}mm 展开）', 'th.combo': '排布方法', 'th.len': '成品长度·长度刀数',
     'th.used': '已用宽度 / 边料', 'th.planRolls': '需用母卷 · 宽度利用率',
     'th.item': '项目', 'th.wm': '宽 (M)', 'th.lm': '长 (M)', 'th.rolls': '卷数', 'th.sqm': 'SQM. (㎡)', 'th.roll': 'Roll',
     'th.metric': '指标', 'th.value': '数值', 'th.desc': '说明',
@@ -737,7 +773,7 @@ var I18N = {
     'bar.edge': '边料',
     'bar.hint': '排刀示意中色块宽度按实际毫米等比绘制，条纹块为无法利用的边料。',
     'tbl.detail': '订单优化明细', 'tbl.detailSub': '每一行订单 → 优化后的可生产规格',
-    'tbl.plan': '分切排产方案', 'tbl.planSub': '每卷母卷的排刀组合与用量',
+    'tbl.plan': '最优排布方法', 'tbl.planSub': '每种排布一目了然：分条 → 分段 → 重复卷数',
     'tbl.sum': '母卷 / 分切卷汇总', 'tbl.sumSub': '与客户报价表一致的输出格式',
     'tbl.loss': '损耗分析',
     'sum.mill': 'Mill Roll（母卷）', 'sum.slit': 'Slit Roll（分切卷）',
@@ -762,12 +798,15 @@ var I18N = {
     'note.lenUp': '长度 {from} → {to}M',
 
     'adv.title': '高级设置（母卷与计算口径）',
-    'adv.mw': '母卷宽度（mm）', 'adv.ml': '母卷长度（M）', 'adv.step': '宽度标准档位（mm）',
+    'step2.title': '选择母卷规格',
+    'step2.mw': '母卷宽度（mm）',
+    'step2.ml': '母卷长度（M）',
+    'adv.step': '宽度标准档位（mm）',
     'adv.maxSeg': '长度方向最大分段数（刀）',
     'adv.nest': '同型号组合套切', 'adv.nestDesc': '同型号多规格混排，降低边料损耗',
     'adv.autoW': '智能宽度微调', 'adv.autoWDesc': '在容差内选利用率更高的宽度档位',
     'adv.autoTol': '宽度微调上限（mm）',
-    'footer.rules': '计算原则：宽度向上取整至标准档位（略大于需求宽）｜长度按母卷长度整段取整｜同型号同规格合并数量后分配母卷｜同型号支持组合套切以最小化废料'
+    'footer.rules': '优化优先级：① 耗用母卷材料最少 ② 排刀方案最少（减少换刀、提高效率）｜套切原则：同一材料不同规格可套切，不同材料不套切｜宽度向上取整至标准档位，长度按母卷整段取整'
   },
   en: {
     'app.tagline': 'Online slitting calculator · Enter order specs and quantities to get the optimal slitting plan',
@@ -794,7 +833,7 @@ var I18N = {
     'th.no': '#', 'th.order': 'Order No.', 'th.model': 'Product', 'th.req': 'Requested', 'th.qty': 'Rolls',
     'th.opt': 'Optimized spec', 'th.cut': 'Slitting', 'th.cap': 'Yield', 'th.mr': 'Mother rolls', 'th.note': 'Adjustment',
     'th.bar': 'Slitting layout (mother roll {w}mm)',
-    'th.combo': 'Strip combination', 'th.len': 'Finished length · cuts',
+    'th.combo': 'Layout', 'th.len': 'Finished length · cuts',
     'th.used': 'Used / edge', 'th.planRolls': 'Mother rolls · width utilization',
     'th.item': 'Item', 'th.wm': 'Width (M)', 'th.lm': 'Length (M)', 'th.rolls': 'Rolls', 'th.sqm': 'SQM. (m²)', 'th.roll': 'Roll',
     'th.metric': 'Metric', 'th.value': 'Value', 'th.desc': 'Notes',
@@ -807,7 +846,7 @@ var I18N = {
     'bar.edge': 'edge',
     'bar.hint': 'Segment widths are drawn to scale in millimetres; the striped block is unusable edge trim.',
     'tbl.detail': 'Order Optimization Detail', 'tbl.detailSub': 'Each order line → optimized production spec',
-    'tbl.plan': 'Slitting Plan', 'tbl.planSub': 'Strip layout and usage per mother roll',
+    'tbl.plan': 'Optimal Layout', 'tbl.planSub': 'Each layout at a glance: strips → segments → repeat count',
     'tbl.sum': 'Mother Roll / Slit Roll Summary', 'tbl.sumSub': 'Output format consistent with the customer quotation sheet',
     'tbl.loss': 'Loss Analysis',
     'sum.mill': 'Mill Roll', 'sum.slit': 'Slit Roll',
@@ -832,12 +871,15 @@ var I18N = {
     'note.lenUp': 'length {from} → {to}M',
 
     'adv.title': 'Advanced settings (mother roll & rules)',
-    'adv.mw': 'Mother roll width (mm)', 'adv.ml': 'Mother roll length (M)', 'adv.step': 'Width step (mm)',
+    'step2.title': 'Select mother roll spec',
+    'step2.mw': 'Mother roll width (mm)',
+    'step2.ml': 'Mother roll length (M)',
+    'adv.step': 'Width step (mm)',
     'adv.maxSeg': 'Max length segments (cuts)',
     'adv.nest': 'Combined layout for same product', 'adv.nestDesc': 'Mix specs of one product to reduce edge waste',
     'adv.autoW': 'Smart width tuning', 'adv.autoWDesc': 'Pick the width step with the best utilization within tolerance',
     'adv.autoTol': 'Width tuning tolerance (mm)',
-    'footer.rules': 'Rules: width rounded up to the standard step (slightly above requested) | length cut into whole segments of the mother roll | lines with the same product & spec are merged before allocating mother rolls | combined layout minimizes waste'
+    'footer.rules': 'Priority: ① minimize mother-roll material ② minimize the number of slitting setups (less tooling change) | Nesting: specs of the same material only | width rounded up to the standard step; length in whole segments of the mother roll'
   }
 };
 
@@ -966,7 +1008,7 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
     var host = el('resultHost');
     if (!res.hasValid) { host.innerHTML = emptyHTML(); return; }
     host.innerHTML =
-      '<div class="result-head no-print"><h2><span class="num">2</span>' + esc(t('res.title')) + '</h2>' +
+      '<div class="result-head no-print"><h2><span class="num">3</span>' + esc(t('res.title')) + '</h2>' +
       '<div class="btn-row">' +
         '<button type="button" class="btn btn-primary" id="btnExportXls">' + esc(t('btn.exportXls')) + '</button>' +
         '<button type="button" class="btn" id="btnExportCsv">' + esc(t('btn.exportCsv')) + '</button>' +
@@ -1083,29 +1125,38 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
       .filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; });
     all.forEach(function (w, i) { colorMap[w] = PALETTE[i % PALETTE.length]; });
 
-    var body = '';
+    var body = '', pi = 0;
+    var CIRC = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫'];
     res.models.forEach(function (p) {
       body += '<tr class="model-head"><td colspan="5"><span>' + esc(p.model || '—') + '</span>' +
         '<span class="tag info" style="margin-left:10px">' + esc(t(p.mode === 'nest' ? 'plan.nest' : 'plan.simple')) + '</span>' +
-        (p.mode === 'nest' ? '<span class="tag ok" style="margin-left:6px">' + esc(t('plan.saved', { n: p.saving })) + '</span>' : '') +
+        (p.mode === 'nest' && p.saving > 0.5 ? '<span class="tag ok" style="margin-left:6px">' + esc(t('plan.saved', { n: p.saving })) + '</span>' : '') +
         '<span style="margin-left:10px;color:#64748b;font-weight:400">' +
           esc(p.mode === 'nest' ? t('plan.motherCmp', { a: trimNum(p.chosen), b: p.simpleRolls }) : t('plan.mother', { a: trimNum(p.chosen) })) +
         '</span></td></tr>';
 
       p.patterns.forEach(function (pt) {
         var combo = pt.segs.map(function (s) { return s.c + '×' + trimNum(s.w) + 'mm'; }).join(' + ');
-        var lenTxt = pt.segs.length
-          ? trimNum(res.config.motherLength / pt.segs[0].n) + ' M <span style="color:#94a3b8">·</span> ' + pt.segs[0].n
-          : '';
+        var perRoll = 0;
+        pt.segs.forEach(function (s) { perRoll += s.c * s.n; });
+        var seg = pt.segs.length ? pt.segs[0].n : 0;
+        var segLen = seg ? res.config.motherLength / seg : 0;
+        var name = '方案' + (CIRC[pi] || (pi + 1));
+        pi++;
+        var desc = '<b>' + name + '</b>　母卷宽向分 <b>' + combo + '</b>' +
+          (seg ? '，每条按长向切 <b>' + seg + ' 段</b>（每段 ' + trimNum(segLen) + ' M）' : '') +
+          '，单卷产出 <b>' + perRoll + ' 卷</b>';
+        var lenTxt = trimNum(pt.times) + ' 卷母卷';
         if (pt.partial) {
-          lenTxt += ' <span class="tag warn">' + esc(t('plan.partial', { l: trimNum(pt.times * res.config.motherLength) })) + '</span>';
+          var frac = pt.times - Math.floor(pt.times);
+          var usedLen = (frac > 1e-9 ? frac : pt.times) * res.config.motherLength;
+          lenTxt += ' <span class="tag warn">' + esc(t('plan.partial', { l: trimNum(usedLen) })) + '</span>';
         }
         body += '<tr>' +
           '<td style="min-width:290px">' + slitBar(pt.segs, MW, colorMap) + '</td>' +
-          '<td style="white-space:nowrap">' + esc(combo) + '</td>' +
-          '<td style="white-space:nowrap">' + lenTxt + '</td>' +
+          '<td>' + desc + '</td>' +
           '<td class="n">' + trimNum(pt.usedWidth) + '<span style="color:#94a3b8"> / </span>' + trimNum(pt.edge) + ' mm</td>' +
-          '<td class="n">' + trimNum(pt.times) + ' · ' + pc(pt.usedWidth / MW, 1) + '</td>' +
+          '<td class="n" style="white-space:nowrap">' + lenTxt + ' · ' + pc(pt.usedWidth / MW, 1) + '</td>' +
           '</tr>';
       });
     });
@@ -1114,7 +1165,7 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
       ' <small>' + esc(t('tbl.planSub')) + '</small></div>' +
       '<div class="card"><div class="table-wrap"><table class="res"><thead><tr>' +
       '<th>' + esc(t('th.bar', { w: trimNum(MW) })) + '</th><th>' + esc(t('th.combo')) + '</th>' +
-      '<th>' + esc(t('th.len')) + '</th><th class="n">' + esc(t('th.used')) + '</th>' +
+      '<th class="n">' + esc(t('th.used')) + '</th>' +
       '<th class="n">' + esc(t('th.planRolls')) + '</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table></div></div>' +
       '<p class="hint" style="margin-top:-6px">' + esc(t('bar.hint')) + '</p>';
@@ -1233,7 +1284,14 @@ function tmsg(m) { return m ? t(m.c, m.p) : ''; }
         if (isFinite(v) && v > 0) { state.cfg[key] = v; updateBadge(); markStale(); }
       });
     };
-    bindNum('cfgMW', 'motherWidth'); bindNum('cfgML', 'motherLength');
+    el('selMW').addEventListener('change', function () {
+      state.cfg.motherWidth = parseFloat(this.value);
+      updateBadge(); markStale();
+    });
+    el('selML').addEventListener('change', function () {
+      state.cfg.motherLength = parseFloat(this.value);
+      updateBadge(); markStale();
+    });
     bindNum('cfgStep', 'widthStep'); bindNum('cfgMaxSeg', 'maxSegments');
     el('cfgAutoTol').addEventListener('input', function () {
       var v = parseFloat(this.value);
